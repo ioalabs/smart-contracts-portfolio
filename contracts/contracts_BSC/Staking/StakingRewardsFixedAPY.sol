@@ -16,16 +16,6 @@ interface IBEP20 {
 
 interface INimbusRouter {
     function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
-    function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) external pure returns (uint amountOut);
-    function factory() external view returns(address);
-}
-
-interface INimbusPair {
-    function getCurrentReserve() external view returns (uint112[2] memory);
-}
-
-interface INimbusFactory {
-    function getPair(address tokenA, address tokenB) external  view returns (address);
 }
 
 contract Ownable {
@@ -273,12 +263,13 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable {
     }
 
     function getEquivalentAmount(uint amount) public view returns (uint) {
-        address factory = swapRouter.factory();
-        address pair = INimbusFactory(address(factory)).getPair(address(stakingToken), address(rewardsToken));
-        (uint112[2] memory current_reserve) = INimbusPair(address(pair)).getCurrentReserve();
+        address[] memory path = new address[](2);
+
         uint equivalent;
         if (stakingToken != rewardsToken) {
-            equivalent = swapRouter.getAmountOut(amount, current_reserve[0], current_reserve[1]);
+            path[0] = address(stakingToken);            
+            path[1] = address(rewardsToken);
+            equivalent = swapRouter.getAmountsOut(amount, path)[1];
         } else {
             equivalent = amount;   
         }
