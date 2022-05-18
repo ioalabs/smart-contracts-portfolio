@@ -370,6 +370,9 @@ contract NimbusPair is INimbusPair, NimbusBEP20 {
         uint112 _reserve1 = current_reserve[1];
         require(amount0Out < _reserve0 && amount1Out < _reserve1, 'Nimbus: INSUFFICIENT_LIQUIDITY');
 
+        current_reserve[0] = _reserve0;
+        current_reserve[1] = _reserve1;
+
         uint balance0;
         uint balance1;
         { // scope for _token{0,1}, avoids stack too deep errors
