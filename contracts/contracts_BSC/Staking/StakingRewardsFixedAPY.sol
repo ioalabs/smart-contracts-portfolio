@@ -226,19 +226,21 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable {
     function _stake(uint256 amount, address user) private {
         stakingToken.safeTransferFrom(msg.sender, address(this), amount);
         uint amountRewardEquivalent = getEquivalentAmount(amount);
+        uint newAmountRewardEquivalent = _balancesRewardEquivalent[user] + amountRewardEquivalent;
 
         _totalSupply += amount;
         _totalSupplyRewardEquivalent += amountRewardEquivalent;
         uint previousAmount = _balances[user];
         uint newAmount = previousAmount + amount;
-        weightedStakeDate[user] = (weightedStakeDate[user] * previousAmount / newAmount) + (block.timestamp * amount / newAmount);
+        weightedStakeDate[user] = (weightedStakeDate[user] * _balancesRewardEquivalent[user] / newAmountRewardEquivalent) + 
+        (block.timestamp * amountRewardEquivalent / newAmountRewardEquivalent);
         _balances[user] = newAmount;
 
         uint stakeNonce = stakeNonces[user]++;
         stakeAmounts[user][stakeNonce] = amount;
         
         stakeAmountsRewardEquivalent[user][stakeNonce] = amountRewardEquivalent;
-        _balancesRewardEquivalent[user] += amountRewardEquivalent;
+        _balancesRewardEquivalent[user] = newAmountRewardEquivalent;
         emit Staked(user, amount);
     }
 
