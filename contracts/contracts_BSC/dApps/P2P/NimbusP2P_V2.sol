@@ -810,11 +810,18 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
     }
 
     function rescue(address to, address tokenAddress, uint256 amount) external onlyOwner whenPaused {
-        require(to != address(0), "SmartLP: Cannot rescue to the zero address");
-        require(amount > 0, "SmartLP: Cannot rescue 0");
+        require(to != address(0), "NimbusP2P_V2: Cannot rescue to the zero address");
+        require(amount > 0, "NimbusP2P_V2: Cannot rescue 0");
 
         TransferHelper.safeTransfer(tokenAddress, to, amount);
         emit RescueToken(to, address(tokenAddress), amount);
+    }
+
+    function rescueEIP721(address to, address tokenAddress, uint256 tokenId) external onlyOwner whenPaused {
+        require(to != address(0), "NimbusP2P_V2: Cannot rescue to the zero address");
+
+        IEIP721(tokenAddress).safeTransferFrom(address(this), to, tokenId);
+        emit RescueToken(to, address(tokenAddress), tokenId);
     }
 
     function rescue(address payable to, uint256 amount) external onlyOwner whenPaused {
