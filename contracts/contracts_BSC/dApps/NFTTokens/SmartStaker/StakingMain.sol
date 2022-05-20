@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.2;
 
 library TransferHelper {
@@ -240,6 +241,7 @@ interface IHubRouting {
     function activateSet(uint256 _setNum) external;
 }
 
+
 contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
     IHubRouting public Hub;
     uint256 public tokenCount;
@@ -344,9 +346,7 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
     }
 
 
-
     // ========================== EIP 721 functions ==========================
-
 
 
     function balanceOf(address owner) public view virtual override returns (uint256) {
@@ -458,22 +458,29 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
         // Clear approvals
         _approve(address(0), tokenId);
 
+        _removeTokenFromUser(tokenId, owner);
+
         _balances[owner] -= 1;
         delete _owners[tokenId];
 
         emit Transfer(owner, address(0), tokenId);
     }
 
+    function _removeTokenFromUser(uint256 tokenId, address owner) internal {
+        for (uint256 i; i < _userTokens[owner].length; i++) {
+            if(_userTokens[owner][i] == tokenId) {
+                _remove(i, owner);
+                break;
+            }
+        }
+    }
+
     function _transfer(address from, address to, uint256 tokenId) internal virtual {
         require(to != address(0), "ERC721: transfer to the zero address");
         require(StakingMain.ownerOf(tokenId) == from, "ERC721: transfer of token that is not owner");
 
-        for (uint256 i; i < _userTokens[from].length; i++) {
-            if(_userTokens[from][i] == tokenId) {
-                _remove(i, from);
-                break;
-            }
-        }
+        _removeTokenFromUser(tokenId, owner);
+
         // Clear approvals from the previous owner
         _approve(address(0), tokenId);
         _userTokens[to].push(tokenId);
