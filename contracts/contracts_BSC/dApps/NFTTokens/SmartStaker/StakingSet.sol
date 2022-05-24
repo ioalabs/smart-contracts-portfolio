@@ -4,6 +4,7 @@ import './StakingSetStorage.sol';
 contract StakingSet is StakingSetStorage {
     using Address for address;
     using Strings for uint256;
+    uint256 public constant MULTIPLIER = 1 ether;
     
     address public target;
 
@@ -86,6 +87,7 @@ contract StakingSet is StakingSetStorage {
       NbuStaking.stake(nbuAmount);
       _balancesRewardEquivalentNbu[tokenId] += nbuAmount;
 
+     
       uint256 noncesGnbu = GnbuStaking.stakeNonces(address(this));
       GnbuStaking.stake(gnbuAmount);
       uint amountRewardEquivalentGnbu = GnbuStaking.getEquivalentAmount(gnbuAmount);
@@ -117,14 +119,15 @@ contract StakingSet is StakingSetStorage {
     }
 
     function makeSwaps(uint256 amount) private returns(uint256,uint256,uint256) {
+      amount *= MULTIPLIER;
       uint CakeEAmount = amount / 100 * 30;
 
       address[] memory path = new address[](2);
       path[0] = address(binanceBNB);
       path[1] = address(cakeToken);
-      (uint[] memory amountsBnbCakeSwap) = pancakeRouter.swapExactETHForTokens{value:  CakeEAmount/ 2}(0, path, address(this), block.timestamp);
-    (, uint amountBnbCake, uint liquidityBnbCake) = pancakeRouter.addLiquidityETH{value: amount - CakeEAmount/ 2 }(address(cakeToken), amountsBnbCakeSwap[1], 0, 0, address(this), block.timestamp);
-      uint NbuAmount = (amount - amountBnbCake - CakeEAmount/ 2 ) / 2;
+      (uint[] memory amountsBnbCakeSwap) = pancakeRouter.swapExactETHForTokens{value:  (CakeEAmount / 2) / MULTIPLIER }(0, path, address(this), block.timestamp);
+    (, uint amountBnbCake, uint liquidityBnbCake) = pancakeRouter.addLiquidityETH{value: (amount - CakeEAmount / 2) / MULTIPLIER }(address(cakeToken), amountsBnbCakeSwap[1], 0, 0, address(this), block.timestamp);
+      uint NbuAmount = ((amount - MULTIPLIER * amountBnbCake - CakeEAmount/ 2 ) / 2) / MULTIPLIER;
       
       path[0] = address(nimbusBNB);
       path[1] = address(nbuToken);
@@ -207,8 +210,8 @@ contract StakingSet is StakingSetStorage {
         UserSupply memory userSupply = tikSupplies[tokenId];
         require(userSupply.IsActive, "StakingSet: Not active");
         
-        NbuUserRewards = (_balancesRewardEquivalentNbu[tokenId] * ((block.timestamp - weightedStakeDate[tokenId]) * 60)) / (100 * rewardDuration);
-        GnbuUserRewards = (_balancesRewardEquivalentGnbu[tokenId] * ((block.timestamp - weightedStakeDate[tokenId]) * 60)) / (100 * rewardDuration);
+        NbuUserRewards = ((_balancesRewardEquivalentNbu[tokenId] * ((block.timestamp - weightedStakeDate[tokenId]) * 60)) * MULTIPLIER / (100 * rewardDuration)) / MULTIPLIER;
+        GnbuUserRewards = ((_balancesRewardEquivalentGnbu[tokenId] * ((block.timestamp - weightedStakeDate[tokenId]) * 60)) * MULTIPLIER / (100 * rewardDuration)) / MULTIPLIER;
         CakeUserRewards = getUserCakeRewards(tokenId);
     }
     
@@ -232,13 +235,13 @@ contract StakingSet is StakingSetStorage {
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
             uint256 multiplier = block.number - pool.lastRewardBlock;
 
-            uint256 cakeReward = multiplier * CakeStaking.cakePerBlock(pool.isRegular) * pool.allocPoint /
+            uint256 cakeReward = multiplier  * CakeStaking.cakePerBlock(pool.isRegular) * pool.allocPoint /
                 (pool.isRegular ? CakeStaking.totalRegularAllocPoint() : CakeStaking.totalSpecialAllocPoint());
             accCakePerShare = accCakePerShare + cakeReward * ACC_CAKE_PRECISION / lpSupply;
         }
 
-        uint256 boostedAmount = userSupply.CakeShares * CakeStaking.getBoostMultiplier(address(this), CAKE_PID) / BOOST_PRECISION;
-        return boostedAmount * accCakePerShare / ACC_CAKE_PRECISION - (userSupply.CurrentRewardDebt * userSupply.CakeShares / userSupply.CurrentCakeShares);
+        uint256 boostedAmount = userSupply.CakeShares * CakeStaking.getBoostMultiplier(address(this), CAKE_PID) * MULTIPLIER / BOOST_PRECISION;
+        return (boostedAmount * accCakePerShare / ACC_CAKE_PRECISION - (userSupply.CurrentRewardDebt * userSupply.CakeShares * MULTIPLIER / userSupply.CurrentCakeShares)) / MULTIPLIER;
     }
     
 
