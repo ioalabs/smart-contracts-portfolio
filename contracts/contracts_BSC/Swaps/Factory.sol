@@ -361,13 +361,11 @@ contract NimbusPair is INimbusPair, NimbusBEP20 {
     // this low-level function should be called from a contract which performs important safety checks
     function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external override lock {
         require(amount0Out > 0 || amount1Out > 0, 'Nimbus: INSUFFICIENT_OUTPUT_AMOUNT');
+        (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         if (current_block != block.number) {
             current_reserve = getReserves(); // gas savings
             current_block = block.number;
         } 
-        current_reserve = getCurrentReserve();
-        uint112 _reserve0 = current_reserve[0];
-        uint112 _reserve1 = current_reserve[1];
         require(amount0Out < _reserve0 && amount1Out < _reserve1, 'Nimbus: INSUFFICIENT_LIQUIDITY');
 
         current_reserve[0] = _reserve0;
