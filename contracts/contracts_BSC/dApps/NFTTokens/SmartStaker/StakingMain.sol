@@ -293,14 +293,14 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
     }
 
     function withdrawReward(uint256 _id) external {
-        require(msg.sender == ownerOf(_id), "StakingMain: Not token owner");        
-        Hub.withdrawReward(_id, ownerOf(_id)); // rewards to msg.sender
+        require(ownerOf(_id) == msg.sender, "StakingMain: Not token owner");        
+        Hub.withdrawReward(_id, msg.sender); // rewards to msg.sender
     }
 
     function burnSmartStaker(uint256 _id) external {
-        require(msg.sender == ownerOf(_id), "StakingMain: Not token owner");        
+        require(ownerOf(_id) == msg.sender, "StakingMain: Not token owner");
         _burn(_id);
-        Hub.burn(_id, ownerOf(_id)); // rewards to msg.sender
+        Hub.burn(_id, msg.sender); // rewards to msg.sender
     }
 
     function addSet(address _stakingSet) external onlyOwner {
