@@ -1,5 +1,13 @@
-pragma solidity ^0.8.2;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.15;
 
+import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 library TransferHelper {
     function safeApprove(address token, address to, uint value) internal {
@@ -17,219 +25,6 @@ library TransferHelper {
     function safeTransferBNB(address to, uint value) internal {
         (bool success,) = to.call{value:value}(new bytes(0));
         require(success, 'TransferHelper: BNB_TRANSFER_FAILED');
-    }
-}
-
-library Strings {
-    bytes16 private constant _HEX_SYMBOLS = "0123456789abcdef";
-
-    function toString(uint256 value) internal pure returns (string memory) {
-
-        if (value == 0) {
-            return "0";
-        }
-        uint256 temp = value;
-        uint256 digits;
-        while (temp != 0) {
-            digits++;
-            temp /= 10;
-        }
-        bytes memory buffer = new bytes(digits);
-        while (value != 0) {
-            digits -= 1;
-            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
-            value /= 10;
-        }
-        return string(buffer);
-    }
-
-    function toHexString(uint256 value) internal pure returns (string memory) {
-        if (value == 0) {
-            return "0x00";
-        }
-        uint256 temp = value;
-        uint256 length = 0;
-        while (temp != 0) {
-            length++;
-            temp >>= 8;
-        }
-        return toHexString(value, length);
-    }
-
-    function toHexString(uint256 value, uint256 length) internal pure returns (string memory) {
-        bytes memory buffer = new bytes(2 * length + 2);
-        buffer[0] = "0";
-        buffer[1] = "x";
-        for (uint256 i = 2 * length + 1; i > 1; --i) {
-            buffer[i] = _HEX_SYMBOLS[value & 0xf];
-            value >>= 4;
-        }
-        require(value == 0, "Strings: hex length insufficient");
-        return string(buffer);
-    }
-}
-
-abstract contract Context {
-    function _msgSender() internal view virtual returns (address) {
-        return msg.sender;
-    }
-
-    function _msgData() internal view virtual returns (bytes calldata) {
-        return msg.data;
-    }
-}
-
-contract Ownable {
-    address public owner;
-    address public newOwner;
-
-    event OwnershipTransferred(address indexed from, address indexed to);
-
-    constructor() {
-        owner = msg.sender;
-        emit OwnershipTransferred(address(0), owner);
-    }
-
-    modifier onlyOwner {
-        require(msg.sender == owner, "Ownable: Caller is not the owner");
-        _;
-    }
-
-    function getOwner() external view returns (address) {
-        return owner;
-    }
-
-    function transferOwnership(address transferOwner) external onlyOwner {
-        require(transferOwner != newOwner);
-        newOwner = transferOwner;
-    }
-
-    function acceptOwnership() virtual external {
-        require(msg.sender == newOwner);
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
-        newOwner = address(0);
-    }
-}
-
-contract ReentrancyGuard {
-    /// @dev counter to allow mutex lock with only one SSTORE operation
-    uint256 private _guardCounter;
-
-    constructor () {
-        // The counter starts at one to prevent changing it from zero to a non-zero
-        // value, which is a more expensive operation.
-        _guardCounter = 1;
-    }
-
-    modifier nonReentrant() {
-        _guardCounter += 1;
-        uint256 localCounter = _guardCounter;
-        _;
-        require(localCounter == _guardCounter, "ReentrancyGuard: reentrant call");
-    }
-}
-
-library Address {
-    function isContract(address account) internal view returns (bool) {
-
-        uint256 size;
-        assembly {
-            size := extcodesize(account)
-        }
-        return size > 0;
-    }
-
-    function sendValue(address payable recipient, uint256 amount) internal {
-        require(address(this).balance >= amount, "Address: insufficient balance");
-
-        (bool success, ) = recipient.call{value: amount}("");
-        require(success, "Address: unable to send value, recipient may have reverted");
-    }
-
-    function functionCall(address target, bytes memory data) internal returns (bytes memory) {
-        return functionCall(target, data, "Address: low-level call failed");
-    }
-
-    function functionCall(
-        address target,
-        bytes memory data,
-        string memory errorMessage
-    ) internal returns (bytes memory) {
-        return functionCallWithValue(target, data, 0, errorMessage);
-    }
-
-    function functionCallWithValue(
-        address target,
-        bytes memory data,
-        uint256 value
-    ) internal returns (bytes memory) {
-        return functionCallWithValue(target, data, value, "Address: low-level call with value failed");
-    }
-
-    function functionCallWithValue(
-        address target,
-        bytes memory data,
-        uint256 value,
-        string memory errorMessage
-    ) internal returns (bytes memory) {
-        require(address(this).balance >= value, "Address: insufficient balance for call");
-        require(isContract(target), "Address: call to non-contract");
-
-        (bool success, bytes memory returndata) = target.call{value: value}(data);
-        return verifyCallResult(success, returndata, errorMessage);
-    }
-
-    function functionStaticCall(address target, bytes memory data) internal view returns (bytes memory) {
-        return functionStaticCall(target, data, "Address: low-level static call failed");
-    }
-
-    function functionStaticCall(
-        address target,
-        bytes memory data,
-        string memory errorMessage
-    ) internal view returns (bytes memory) {
-        require(isContract(target), "Address: static call to non-contract");
-
-        (bool success, bytes memory returndata) = target.staticcall(data);
-        return verifyCallResult(success, returndata, errorMessage);
-    }
-
-    function functionDelegateCall(address target, bytes memory data) internal returns (bytes memory) {
-        return functionDelegateCall(target, data, "Address: low-level delegate call failed");
-    }
-
-    function functionDelegateCall(
-        address target,
-        bytes memory data,
-        string memory errorMessage
-    ) internal returns (bytes memory) {
-        require(isContract(target), "Address: delegate call to non-contract");
-
-        (bool success, bytes memory returndata) = target.delegatecall(data);
-        return verifyCallResult(success, returndata, errorMessage);
-    }
-
-    function verifyCallResult(
-        bool success,
-        bytes memory returndata,
-        string memory errorMessage
-    ) internal pure returns (bytes memory) {
-        if (success) {
-            return returndata;
-        } else {
-            // Look for revert reason and bubble it up if present
-            if (returndata.length > 0) {
-                // The easiest way to bubble the revert reason is using memory via assembly
-
-                assembly {
-                    let returndata_size := mload(returndata)
-                    revert(add(32, returndata), returndata_size)
-                }
-            } else {
-                revert(errorMessage);
-            }
-        }
     }
 }
 
@@ -279,28 +74,6 @@ interface IBEP721 is IBEP165 {
         uint256 tokenId,
         bytes calldata data
     ) external;
-}
-
-interface IBEP721Metadata is IBEP721 {
-    function name() external view returns (string memory);
-    function symbol() external view returns (string memory);
-    function tokenURI(uint256 tokenId) external view returns (string memory);
-}
-
-interface IBEP20 {
-    event Approval(address indexed owner, address indexed spender, uint value);
-    event Transfer(address indexed from, address indexed to, uint value);
-
-    function name() external view returns (string memory);
-    function decimals() external view returns (uint8);
-    function symbol() external view returns (string memory);
-    function totalSupply() external view returns (uint);
-    function balanceOf(address owner) external view returns (uint);
-    function allowance(address owner, address spender) external view returns (uint);
-
-    function approve(address spender, uint value) external returns (bool);
-    function transfer(address to, uint value) external returns (bool);
-    function transferFrom(address from, address to, uint value) external returns (bool);
 }
 
 interface IRouter {
@@ -391,7 +164,7 @@ interface IMasterChef {
     function CAKE() external view returns(address);
 }
 
-contract StakingSetStorage is Ownable, Context, ReentrancyGuard, ERC165 {    
+contract StakingSetStorage is ContextUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, ERC165 {    
     IWBNB public nimbusBNB;
     IWBNB public binanceBNB;
     IRouter public nimbusRouter;
@@ -400,18 +173,18 @@ contract StakingSetStorage is Ownable, Context, ReentrancyGuard, ERC165 {
     IGnbuStaking public GnbuStaking;
     IMasterChef public CakeStaking;
     IlpBnbCake public lpBnbCake;
-    IBEP20 public nbuToken;
-    IBEP20 public gnbuToken;
-    IBEP20 public cakeToken;
-    IBEP20 public busdToken;
+    IERC20Upgradeable public nbuToken;
+    IERC20Upgradeable public gnbuToken;
+    IERC20Upgradeable public cakeToken;
+    IERC20Upgradeable public busdToken;
     address public purchaseToken;
     address public hubRouting;
-    uint256 public minPurchaseAmount = 0.1 ether;
+    uint256 public minPurchaseAmount;
     uint256 public rewardDuration;
     uint256 public counter;
-    uint256 public lockTime = 2 minutes;
-    uint256 public CAKE_PID = 4;
-    uint256 public constant POOLS_NUMBER = 3;
+    uint256 public lockTime;
+    uint256 public cakePID;
+    uint256 public POOLS_NUMBER;
 
     mapping(uint256 => uint256) public providedAmount;
 

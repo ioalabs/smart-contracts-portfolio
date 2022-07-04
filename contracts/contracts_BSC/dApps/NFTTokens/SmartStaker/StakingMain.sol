@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.2;
+pragma solidity 0.8.15;
 
 library TransferHelper {
     function safeApprove(address token, address to, uint value) internal {
@@ -293,14 +293,14 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
     }
 
     function withdrawReward(uint256 _id) external {
-        require(ownerOf(_id) == msg.sender, "StakingMain: Not token owner");        
-        Hub.withdrawReward(_id, msg.sender); // rewards to msg.sender
+        require(msg.sender == ownerOf(_id), "StakingMain: Not token owner");        
+        Hub.withdrawReward(_id, ownerOf(_id)); // rewards to msg.sender
     }
 
     function burnSmartStaker(uint256 _id) external {
-        require(ownerOf(_id) == msg.sender, "StakingMain: Not token owner");
+        require(msg.sender == ownerOf(_id), "StakingMain: Not token owner");        
         _burn(_id);
-        Hub.burn(_id, msg.sender); // rewards to msg.sender
+        Hub.burn(_id, ownerOf(_id)); // rewards to msg.sender
     }
 
     function addSet(address _stakingSet) external onlyOwner {
@@ -528,6 +528,7 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
 
 
     // ========================== Owner functions ==========================
+
 
     function rescue(address to, address tokenAddress, uint256 amount) external onlyOwner {
         require(to != address(0), "StakingMain: Cannot rescue to the zero address");

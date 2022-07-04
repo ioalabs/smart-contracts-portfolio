@@ -1,4 +1,5 @@
-pragma solidity ^0.8.2;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.15;
 
 contract Ownable {
     address public owner;
@@ -65,7 +66,7 @@ interface IStakingSet {
 }
 
 contract HubRouting is Ownable {
-    address private StakingMain;
+    address public StakingMain;
     uint256 public stakingSetCount;
 
     mapping(uint256 => bool) public listActive;
@@ -76,6 +77,7 @@ contract HubRouting is Ownable {
     event RegistrationSet(uint256 indexed stakingSetCount, address stakingSet, address purchaseToken);
 
     constructor(address _StakingMain) {
+        require(_StakingMain != address(0), "HubRouting :: Zero address was given as StakingMain");
         StakingMain = _StakingMain;
     }
 
