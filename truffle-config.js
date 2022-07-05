@@ -24,6 +24,7 @@
 // const fs = require('fs');
 // const mnemonic = fs.readFileSync(".secret").toString().trim();
 const { constants } = require("@openzeppelin/test-helpers");
+const ContractSizer = require('truffle-contract-sizer')
 module.exports = {
   /**
    * Networks define how you connect to your ethereum client and let you set the
@@ -116,3 +117,4 @@ module.exports = {
     enabled: false,
   },
 };
+ContractSizer(module.exports, console.error)

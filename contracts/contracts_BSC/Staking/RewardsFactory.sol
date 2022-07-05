@@ -9,7 +9,7 @@ interface IBEP20 {
     function approve(address spender, uint256 amount) external returns (bool);
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
     function getOwner() external view returns (address);
-    
+
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
@@ -108,7 +108,7 @@ library SafeBEP20 {
         (bool success, bytes memory returndata) = address(token).call(data);
         require(success, "SafeBEP20: low-level call failed");
 
-        if (returndata.length > 0) { 
+        if (returndata.length > 0) {
             require(abi.decode(returndata, (bool)), "SafeBEP20: BEP20 operation did not succeed");
         }
     }
@@ -132,6 +132,97 @@ contract ReentrancyGuard {
     }
 }
 
+/**
+ * @dev Contract module which allows children to implement an emergency stop
+ * mechanism that can be triggered by an authorized account.
+ *
+ * This module is used through inheritance. It will make available the
+ * modifiers `whenNotPaused` and `whenPaused`, which can be applied to
+ * the functions of your contract. Note that they will not be pausable by
+ * simply including this module, only once the modifiers are put in place.
+ */
+abstract contract Pausable {
+    /**
+     * @dev Emitted when the pause is triggered by `account`.
+     */
+    event Paused(address account);
+
+    /**
+     * @dev Emitted when the pause is lifted by `account`.
+     */
+    event Unpaused(address account);
+
+    bool private _paused;
+
+    /**
+     * @dev Initializes the contract in unpaused state.
+     */
+    constructor() {
+        _paused = false;
+    }
+
+    /**
+     * @dev Returns true if the contract is paused, and false otherwise.
+     */
+    function paused() public view virtual returns (bool) {
+        return _paused;
+    }
+
+    /**
+     * @dev Modifier to make a function callable only when the contract is not paused.
+     *
+     * Requirements:
+     *
+     * - The contract must not be paused.
+     */
+    modifier whenNotPaused() {
+        require(!paused(), "Pausable: paused");
+        _;
+    }
+
+    /**
+     * @dev Modifier to make a function callable only when the contract is paused.
+     *
+     * Requirements:
+     *
+     * - The contract must be paused.
+     */
+    modifier whenPaused() {
+        require(paused(), "Pausable: not paused");
+        _;
+    }
+
+    /**
+     * @dev Triggers stopped state.
+     *
+     * Requirements:
+     *
+     * - The contract must not be paused.
+     */
+    function _pause() internal virtual whenNotPaused {
+        _paused = true;
+        emit Paused(msg.sender);
+    }
+
+    /**
+     * @dev Returns to normal state.
+     *
+     * Requirements:
+     *
+     * - The contract must be paused.
+     */
+    function _unpause() internal virtual whenPaused {
+        _paused = false;
+        emit Unpaused(msg.sender);
+    }
+}
+
+interface IPriceFeed {
+    function queryRate(address sourceTokenAddress, address destTokenAddress) external view returns (uint256 rate, uint256 precision);
+    function wbnbToken() external view returns(address);
+}
+
+
 // Inheritance
 interface IStakingRewards {
     // Views
@@ -139,6 +230,7 @@ interface IStakingRewards {
     function rewardPerToken() external view returns (uint256);
     function earned(address account) external view returns (uint256);
     function getRewardForDuration() external view returns (uint256);
+    function getRewardForUser(address user) external;
     function totalSupply() external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
 
@@ -160,8 +252,30 @@ abstract contract RewardsDistributionRecipient {
     }
 }
 
-contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, ReentrancyGuard {
+contract StakingRewards is IStakingRewards, Pausable, Ownable, RewardsDistributionRecipient, ReentrancyGuard {
     using SafeBEP20 for IBEP20;
+
+    struct StakeNonceInfo {
+        uint256 stakeTime;
+        uint256 stakingTokenAmount;
+        uint256 rewardsTokenAmount;
+        uint256 rewardRate;
+    }
+
+    struct APYCheckpoint {
+        uint256 timestamp;
+        uint256 rewardRate;
+    }
+
+    uint256 public rateChangesNonce;
+    mapping(address => mapping(uint256 => StakeNonceInfo)) public stakeNonceInfos;
+    mapping(uint256 => APYCheckpoint) APYcheckpoints;
+    bool public usePriceFeeds;
+    IPriceFeed public priceFeed;
+    event ToggleUsePriceFeeds(bool indexed usePriceFeeds);
+    event RescueToken(address indexed to, address indexed token, uint amount);
+    event RewardRateUpdated(uint256 indexed rateChangesNonce, uint256 rewardRate, uint256 timestamp);
+    mapping(address => uint256) public stakeNonces;
 
     IBEP20 public immutable rewardsToken;
     IBEP20 public immutable stakingToken;
@@ -180,13 +294,18 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
     constructor(
         address _rewardsDistribution,
         address _rewardsToken,
-        address _stakingToken
+        address _stakingToken,
+        uint _rewardRate
     ) {
-        require(_rewardsDistribution != address(0) && _rewardsToken != address(0) && _stakingToken != address(0), "StakingRewards: Zero address(es)");
         rewardsToken = IBEP20(_rewardsToken);
         stakingToken = IBEP20(_stakingToken);
+        rewardRate = _rewardRate;
+
         require(IBEP20(_rewardsToken).decimals() == 18 && IBEP20(_stakingToken).decimals() == 18, "StakingRewards: Unsopported decimals");
         rewardsDistribution = _rewardsDistribution;
+
+        emit RewardRateUpdated(rateChangesNonce, _rewardRate, block.timestamp);
+        APYcheckpoints[rateChangesNonce++] = APYCheckpoint(block.timestamp, rewardRate);
     }
 
     function totalSupply() external override view returns (uint256) {
@@ -209,8 +328,20 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
             rewardPerTokenStored + ((lastTimeRewardApplicable() - lastUpdateTime) * rewardRate * 1e18 / _totalSupply);
     }
 
-    function earned(address account) public override view returns (uint256) {
-        return _balances[account] * (rewardPerToken() - userRewardPerTokenPaid[account]) / 1e18 + rewards[account];
+    function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
+        return stakeNonceInfos[account][nonce].rewardsTokenAmount *
+        (block.timestamp - stakeNonceInfos[account][nonce].stakeTime) *
+        stakeNonceInfos[account][nonce].rewardRate / (100 * rewardsDuration);
+    }
+
+    function earned(address account) public view override returns (uint256) {
+        uint256 totalEarned;
+
+        for (uint256 i = 0; i < stakeNonces[account]; i++) {
+            totalEarned += earnedByNonce(account, i);
+        }
+
+        return totalEarned;
     }
 
     function getRewardForDuration() external override view returns (uint256) {
@@ -218,7 +349,7 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
     }
 
     function stakeWithPermit(uint256 amount, uint deadline, uint8 v, bytes32 r, bytes32 s) external nonReentrant updateReward(msg.sender) {
-        require(amount > 0, "Cannot stake 0");
+        require(amount > 0, "StakingRewards: Cannot stake 0");
         _totalSupply += amount;
         _balances[msg.sender] += amount;
 
@@ -229,28 +360,60 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
         emit Staked(msg.sender, amount);
     }
 
-    function stake(uint256 amount) external override nonReentrant updateReward(msg.sender) {
+    function stake(uint256 amount) external override whenNotPaused nonReentrant updateReward(msg.sender) {
         require(amount > 0, "Cannot stake 0");
         _totalSupply += amount;
         _balances[msg.sender] += amount;
+        uint stakeNonce = stakeNonces[msg.sender]++;
+
+        stakeNonceInfos[msg.sender][stakeNonce].stakingTokenAmount = amount;
+        stakeNonceInfos[msg.sender][stakeNonce].stakeTime = block.timestamp;
+        stakeNonceInfos[msg.sender][stakeNonce].rewardRate = rewardRate;
+        //        stakeNonceInfos[msg.sender][stakeNonce].rewardsTokenAmount = amountRewardEquivalent;
+
         stakingToken.safeTransferFrom(msg.sender, address(this), amount);
         emit Staked(msg.sender, amount);
     }
 
-    function withdraw(uint256 amount) public override nonReentrant updateReward(msg.sender) {
-        require(amount > 0, "Cannot withdraw 0");
+    function withdraw(uint256 nonce) public override whenNotPaused nonReentrant updateReward(msg.sender) {
+        require(stakeNonceInfos[msg.sender][nonce].stakingTokenAmount > 0, "StakingRewards: This stake nonce was withdrawn");
+        uint amount = stakeNonceInfos[msg.sender][nonce].stakingTokenAmount;
+        uint amountRewardEquivalent = stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount;
+
         _totalSupply -= amount;
         _balances[msg.sender] -= amount;
+        stakeNonceInfos[msg.sender][nonce].stakingTokenAmount = 0;
+        stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount = 0;
         stakingToken.safeTransfer(msg.sender, amount);
         emit Withdrawn(msg.sender, amount);
     }
 
-    function getReward() public override nonReentrant updateReward(msg.sender) {
-        uint256 reward = rewards[msg.sender];
+    function getReward() public override whenNotPaused nonReentrant updateReward(msg.sender) {
+        uint256 reward = earned(msg.sender);
+
         if (reward > 0) {
             rewards[msg.sender] = 0;
+
+            for (uint256 i = 0; i < stakeNonces[msg.sender]; i++) {
+                stakeNonceInfos[msg.sender][i].stakeTime = block.timestamp;
+            }
+
             rewardsToken.safeTransfer(msg.sender, reward);
             emit RewardPaid(msg.sender, reward);
+        }
+    }
+
+    function getRewardForUser(address user) public override nonReentrant whenNotPaused {
+        require(msg.sender == owner, "StakingRewards :: isn`t allowed to call rewards");
+
+        uint256 reward = earned(user);
+
+        if (reward > 0) {
+            for (uint256 i = 0; i < stakeNonces[user]; i++) {
+                stakeNonceInfos[user][i].stakeTime = block.timestamp;
+            }
+            rewardsToken.safeTransfer(user, reward);
+            emit RewardPaid(user, reward);
         }
     }
 
@@ -280,6 +443,11 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
         emit RewardAdded(reward);
     }
 
+    function setPaused(bool _paused) external onlyOwner {
+        if (_paused) _pause();
+        else _unpause();
+    }
+
     modifier updateReward(address account) {
         rewardPerTokenStored = rewardPerToken();
         lastUpdateTime = lastTimeRewardApplicable();
@@ -288,6 +456,32 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
             userRewardPerTokenPaid[account] = rewardPerTokenStored;
         }
         _;
+    }
+
+    function updateRewardRate(uint256 _rewardRate) external onlyOwner {
+        rewardRate = _rewardRate;
+        emit RewardRateUpdated(rateChangesNonce, _rewardRate, block.timestamp);
+        APYcheckpoints[rateChangesNonce++] = APYCheckpoint(block.timestamp, _rewardRate);
+    }
+
+    function updatePriceFeed(address newPriceFeed) external onlyOwner {
+        require(newPriceFeed != address(0), "StakingRewardFixedAPY: Address is zero");
+        priceFeed = IPriceFeed(newPriceFeed);
+    }
+
+    function toggleUsePriceFeeds() external onlyOwner {
+        usePriceFeeds = !usePriceFeeds;
+        emit ToggleUsePriceFeeds(usePriceFeeds);
+    }
+
+    function rescue(address to, address token, uint256 amount) external onlyOwner whenPaused {
+        require(to != address(0), "StakingRewardFixedAPY: Cannot rescue to the zero address");
+        require(amount > 0, "StakingRewardFixedAPY: Cannot rescue 0");
+        require(token != address(stakingToken), "StakingRewardFixedAPY: Cannot rescue staking token");
+        //owner can rescue rewardsToken if there is spare unused tokens on staking contract balance
+
+        IBEP20(token).safeTransfer(to, amount);
+        emit RescueToken(to, address(token), amount);
     }
 
     event RewardAdded(uint256 reward);
@@ -330,11 +524,11 @@ contract StakingRewardsFactory is Ownable {
 
     // deploy a staking reward contract for the staking token, and store the reward amount
     // the reward will be distributed to the staking reward contract no sooner than the genesis
-    function deploy(address stakingToken, uint rewardAmount) external onlyOwner {
+    function deploy(address stakingToken, uint rewardAmount, uint rewardRate) external onlyOwner {
         StakingRewardsInfo storage info = stakingRewardsInfoByStakingToken[stakingToken];
         require(info.stakingRewards == address(0), 'StakingRewardsFactory::deploy: already deployed');
 
-        info.stakingRewards = address(new StakingRewards(/*_rewardsDistribution=*/ address(this), rewardsToken, stakingToken));
+        info.stakingRewards = address(new StakingRewards(/*_rewardsDistribution=*/ address(this), rewardsToken, stakingToken, rewardRate));
         info.rewardAmount = rewardAmount;
         stakingTokens.push(stakingToken);
     }
