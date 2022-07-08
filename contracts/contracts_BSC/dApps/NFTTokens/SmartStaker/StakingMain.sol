@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.2;
+pragma solidity 0.8.15;
 
 library TransferHelper {
     function safeApprove(address token, address to, uint value) internal {
@@ -528,6 +528,7 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
 
 
     // ========================== Owner functions ==========================
+
 
     function rescue(address to, address tokenAddress, uint256 amount) external onlyOwner {
         require(to != address(0), "StakingMain: Cannot rescue to the zero address");
