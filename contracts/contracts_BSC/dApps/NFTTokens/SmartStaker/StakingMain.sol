@@ -1,160 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.15;
 
-library TransferHelper {
-    function safeApprove(address token, address to, uint value) internal {
-        (bool success, bytes memory data) = token.call(abi.encodeWithSelector(0x095ea7b3, to, value));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), 'TransferHelper: APPROVE_FAILED');
-    }
-    function safeTransfer(address token, address to, uint value) internal {
-        (bool success, bytes memory data) = token.call(abi.encodeWithSelector(0xa9059cbb, to, value));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), 'TransferHelper: TRANSFER_FAILED');
-    }
-    function safeTransferFrom(address token, address from, address to, uint value) internal {
-        (bool success, bytes memory data) = token.call(abi.encodeWithSelector(0x23b872dd, from, to, value));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), 'TransferHelper: TRANSFER_FROM_FAILED');
-    }
-    function safeTransferBNB(address to, uint value) internal {
-        (bool success,) = to.call{value:value}(new bytes(0));
-        require(success, 'TransferHelper: BNB_TRANSFER_FAILED');
-    }
-}
-
-library Address {
-    function isContract(address account) internal view returns (bool) {
-
-        uint256 size;
-        assembly {
-            size := extcodesize(account)
-        }
-        return size > 0;
-    }
-
-    function sendValue(address payable recipient, uint256 amount) internal {
-        require(address(this).balance >= amount, "Address: insufficient balance");
-
-        (bool success, ) = recipient.call{value: amount}("");
-        require(success, "Address: unable to send value, recipient may have reverted");
-    }
-
-    function functionCall(address target, bytes memory data) internal returns (bytes memory) {
-        return functionCall(target, data, "Address: low-level call failed");
-    }
-
-    function functionCall(
-        address target,
-        bytes memory data,
-        string memory errorMessage
-    ) internal returns (bytes memory) {
-        return functionCallWithValue(target, data, 0, errorMessage);
-    }
-
-    function functionCallWithValue(
-        address target,
-        bytes memory data,
-        uint256 value
-    ) internal returns (bytes memory) {
-        return functionCallWithValue(target, data, value, "Address: low-level call with value failed");
-    }
-
-    function functionCallWithValue(
-        address target,
-        bytes memory data,
-        uint256 value,
-        string memory errorMessage
-    ) internal returns (bytes memory) {
-        require(address(this).balance >= value, "Address: insufficient balance for call");
-        require(isContract(target), "Address: call to non-contract");
-
-        (bool success, bytes memory returndata) = target.call{value: value}(data);
-        return verifyCallResult(success, returndata, errorMessage);
-    }
-
-    function functionStaticCall(address target, bytes memory data) internal view returns (bytes memory) {
-        return functionStaticCall(target, data, "Address: low-level static call failed");
-    }
-
-    function functionStaticCall(
-        address target,
-        bytes memory data,
-        string memory errorMessage
-    ) internal view returns (bytes memory) {
-        require(isContract(target), "Address: static call to non-contract");
-
-        (bool success, bytes memory returndata) = target.staticcall(data);
-        return verifyCallResult(success, returndata, errorMessage);
-    }
-
-    function functionDelegateCall(address target, bytes memory data) internal returns (bytes memory) {
-        return functionDelegateCall(target, data, "Address: low-level delegate call failed");
-    }
-
-    function functionDelegateCall(
-        address target,
-        bytes memory data,
-        string memory errorMessage
-    ) internal returns (bytes memory) {
-        require(isContract(target), "Address: delegate call to non-contract");
-
-        (bool success, bytes memory returndata) = target.delegatecall(data);
-        return verifyCallResult(success, returndata, errorMessage);
-    }
-
-    function verifyCallResult(
-        bool success,
-        bytes memory returndata,
-        string memory errorMessage
-    ) internal pure returns (bytes memory) {
-        if (success) {
-            return returndata;
-        } else {
-            // Look for revert reason and bubble it up if present
-            if (returndata.length > 0) {
-                // The easiest way to bubble the revert reason is using memory via assembly
-
-                assembly {
-                    let returndata_size := mload(returndata)
-                    revert(add(32, returndata), returndata_size)
-                }
-            } else {
-                revert(errorMessage);
-            }
-        }
-    }
-}
-
-contract Ownable {
-    address public owner;
-    address public newOwner;
-
-    event OwnershipTransferred(address indexed from, address indexed to);
-
-    constructor() {
-        owner = msg.sender;
-        emit OwnershipTransferred(address(0), owner);
-    }
-
-    modifier onlyOwner {
-        require(msg.sender == owner, "Ownable: Caller is not the owner");
-        _;
-    }
-
-    function getOwner() external view returns (address) {
-        return owner;
-    }
-
-    function transferOwnership(address transferOwner) external onlyOwner {
-        require(transferOwner != newOwner);
-        newOwner = transferOwner;
-    }
-
-    function acceptOwnership() virtual external {
-        require(msg.sender == newOwner);
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
-        newOwner = address(0);
-    }
-}
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 
 interface IBEP721 {
@@ -243,10 +92,11 @@ interface IHubRouting {
 
 
 contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
+    using SafeERC20 for IBEP20;
+    using Address for address;
     IHubRouting public Hub;
     uint256 public tokenCount;
-    using Address for address;
-    address public WBNB;
+    address immutable WBNB;
 
     string internal _name;
     string internal _symbol;
@@ -282,14 +132,13 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
     function buySmartStaker(uint256 _setNum, uint _amount) external payable {
         address stakingSet = Hub.listMap(_setNum);
         address purchaseToken = IStakingSet(stakingSet).purchaseToken();
-        if (WBNB != purchaseToken) {
-            TransferHelper.safeTransferFrom(purchaseToken, msg.sender, stakingSet, _amount);
-        }
         tokenCount++;
         _userTokens[msg.sender].push(tokenCount); 
         _mint(msg.sender, tokenCount);
-        (bool success,) = address(Hub).call{value: msg.value}(abi.encodeWithSignature("stake(uint256,uint256,uint256)",_setNum,_amount,tokenCount));
-        require(success, "StakingMain::buySmartStaker failed");
+        if (WBNB != purchaseToken) {
+            IBEP20(purchaseToken).transferFrom(msg.sender, stakingSet, _amount);
+        }
+        Address.functionCallWithValue(address(Hub), abi.encodeWithSignature("stake(uint256,uint256,uint256)",_setNum,_amount,tokenCount), msg.value, "StakingMain::buySmartStaker failed");
     }
 
     function withdrawReward(uint256 _id) external {
@@ -341,7 +190,7 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
         (supplyTime, burnTime) = StakingSet.getNFTtiming(_id);
     }
 
-    function getUserTokens(address user) public view returns (uint[] memory) {
+    function getUserTokens(address user) external view returns (uint[] memory) {
         return _userTokens[user];
     }
 
@@ -349,7 +198,7 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
     // ========================== EIP 721 functions ==========================
 
 
-    function balanceOf(address owner) public view virtual override returns (uint256) {
+    function balanceOf(address owner) external view virtual override returns (uint256) {
         require(owner != address(0), "ERC721: balance query for the zero address");
         return _balances[owner];
     }
@@ -360,16 +209,16 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
         return owner;
     }
 
-    function name() public view virtual override returns (string memory) {
+    function name() external view virtual override returns (string memory) {
         return _name;
     }
 
-    function symbol() public view virtual override returns (string memory) {
+    function symbol() external view virtual override returns (string memory) {
         return _symbol;
     }
 
 
-    function approve(address to, uint256 tokenId) public virtual override {
+    function approve(address to, uint256 tokenId) external virtual override {
         address owner = StakingMain.ownerOf(tokenId);
         require(to != owner, "ERC721: approval to current owner");
 
@@ -386,7 +235,7 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
         return _tokenApprovals[tokenId];
     }
 
-    function setApprovalForAll(address operator, bool approved) public virtual override {
+    function setApprovalForAll(address operator, bool approved) external virtual override {
         _setApprovalForAll(msg.sender, operator, approved);
     }
 
@@ -394,13 +243,13 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
         return _operatorApprovals[owner][operator];
     }
 
-    function transferFrom(address from, address to, uint256 tokenId) public virtual override {
+    function transferFrom(address from, address to, uint256 tokenId) external virtual override {
         //solhint-disable-next-line max-line-length
         require(_isApprovedOrOwner(msg.sender, tokenId), "ERC721: transfer caller is not owner nor approved");
         _transfer(from, to, tokenId);
     }
 
-    function safeTransferFrom(address from, address to, uint256 tokenId) public virtual override {
+    function safeTransferFrom(address from, address to, uint256 tokenId) external virtual override {
         safeTransferFrom(from, to, tokenId, "");
     }
 
@@ -479,7 +328,7 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
         require(to != address(0), "ERC721: transfer to the zero address");
         require(StakingMain.ownerOf(tokenId) == from, "ERC721: transfer of token that is not owner");
 
-        _removeTokenFromUser(tokenId, owner);
+        _removeTokenFromUser(tokenId, owner());
 
         // Clear approvals from the previous owner
         _approve(address(0), tokenId);

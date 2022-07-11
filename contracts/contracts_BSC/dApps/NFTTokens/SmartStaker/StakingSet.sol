@@ -2,14 +2,11 @@
 pragma solidity 0.8.15;
 import './StakingSetStorage.sol';
 
-
 contract StakingSet is StakingSetStorage {
     using AddressUpgradeable for address;
     using StringsUpgradeable for uint256;
     uint256 public constant MULTIPLIER = 1 ether;
     
-    address public target;
-
     function initialize(
         address _nimbusRouter, 
         address _pancakeRouter,
@@ -46,18 +43,17 @@ contract StakingSet is StakingSetStorage {
         nbuToken = IERC20Upgradeable(_nbuToken);
         gnbuToken = IERC20Upgradeable(_gnbuToken);
         lpBnbCake = IlpBnbCake(_lpBnbCake);
-        NbuStaking = INbuStaking(_NbuStaking);
-        GnbuStaking = IGnbuStaking(_GnbuStaking);
+        NbuStaking = IStaking(_NbuStaking);
+        GnbuStaking = IStaking(_GnbuStaking);
         CakeStaking = IMasterChef(_CakeStaking);
         cakeToken = IERC20Upgradeable(CakeStaking.CAKE());
         purchaseToken = _nimbusBNB;
         hubRouting = _hub;
-        minPurchaseAmount = 0.1 ether;
-        lockTime = 2 minutes;
-        cakePID = 4;
+        minPurchaseAmount = 1 ether;
+        lockTime = 30 days;
         POOLS_NUMBER = 3;
 
-        rewardDuration = INbuStaking(_NbuStaking).rewardDuration();
+        rewardDuration = IStaking(_NbuStaking).rewardDuration();
 
 
         IERC20Upgradeable(_nbuToken).approve(_nimbusRouter, type(uint256).max);
@@ -95,57 +91,60 @@ contract StakingSet is StakingSetStorage {
 
       (uint256 nbuAmount,uint256 gnbuAmount,uint256 cakeLPamount) = makeSwaps(amountBNB); 
 
-      NbuStaking.stake(nbuAmount);
+      uint256 nonceNbu = NbuStaking.stakeNonces(address(this));
       _balancesRewardEquivalentNbu[tokenId] += nbuAmount;
 
      
-      uint256 noncesGnbu = GnbuStaking.stakeNonces(address(this));
-      GnbuStaking.stake(gnbuAmount);
-      uint amountRewardEquivalentGnbu = GnbuStaking.getEquivalentAmount(gnbuAmount);
-      _balancesRewardEquivalentGnbu[tokenId] += amountRewardEquivalentGnbu;
+      uint256 nonceGnbu = GnbuStaking.stakeNonces(address(this));
+      uint256 amountRewardEquivalentGnbu = GnbuStaking.getEquivalentAmount(gnbuAmount);
+      _balancesRewardEquivalentGnbu[tokenId] += amountRewardEquivalentGnbu;      
 
-      
       IMasterChef.UserInfo memory user = CakeStaking.userInfo(cakePID, address(this));
-      uint oldCakeShares = user.amount;
-
-      CakeStaking.deposit(cakePID,cakeLPamount);
-      user = CakeStaking.userInfo(cakePID, address(this));
+      uint256 oldCakeShares = user.amount;
 
       UserSupply storage userSupply = tikSupplies[tokenId];
       userSupply.IsActive = true;
       userSupply.NbuStakingAmount = nbuAmount;
       userSupply.GnbuStakingAmount = gnbuAmount;
       userSupply.CakeBnbAmount = cakeLPamount;
-      userSupply.GnbuStakeNonce = noncesGnbu;
-      userSupply.CakeShares = user.amount - oldCakeShares;
-      userSupply.CurrentCakeShares = user.amount;
-      userSupply.CurrentRewardDebt = user.rewardDebt;
+      userSupply.NbuStakeNonce = nonceNbu;
+      userSupply.GnbuStakeNonce = nonceGnbu;
       userSupply.SupplyTime = block.timestamp;
       userSupply.TokenId = tokenId;
 
+      CakeStaking.deposit(cakePID,cakeLPamount);
+      user = CakeStaking.userInfo(cakePID, address(this));
+      userSupply.CakeShares = user.amount - oldCakeShares;
+      userSupply.CurrentCakeShares = user.amount;
+      userSupply.CurrentRewardDebt = user.rewardDebt;
+      
       weightedStakeDate[tokenId] = userSupply.SupplyTime;
       counter++;
+      
+      NbuStaking.stake(nbuAmount);
+      GnbuStaking.stake(gnbuAmount);
 
       emit BuyStakingSet(tokenId, purchaseToken, amountBNB, userSupply.SupplyTime);
     }
 
     function makeSwaps(uint256 amount) private returns(uint256,uint256,uint256) {
+      uint256 swapDeadline = block.timestamp + 1200; // 20 mins
       amount *= MULTIPLIER;
-      uint CakeEAmount = amount / 100 * 30;
+      uint CakeEAmount = amount * 30 / 100;
 
       address[] memory path = new address[](2);
       path[0] = address(binanceBNB);
       path[1] = address(cakeToken);
-      (uint[] memory amountsBnbCakeSwap) = pancakeRouter.swapExactETHForTokens{value:  (CakeEAmount / 2) / MULTIPLIER }(0, path, address(this), block.timestamp);
-    (, uint amountBnbCake, uint liquidityBnbCake) = pancakeRouter.addLiquidityETH{value: (amount - CakeEAmount / 2) / MULTIPLIER }(address(cakeToken), amountsBnbCakeSwap[1], 0, 0, address(this), block.timestamp);
+      (uint[] memory amountsBnbCakeSwap) = pancakeRouter.swapExactETHForTokens{value:  (CakeEAmount / 2) / MULTIPLIER }(0, path, address(this), swapDeadline);
+    (, uint amountBnbCake, uint liquidityBnbCake) = pancakeRouter.addLiquidityETH{value: (amount - CakeEAmount / 2) / MULTIPLIER }(address(cakeToken), amountsBnbCakeSwap[1], 0, 0, address(this), swapDeadline);
       uint NbuAmount = ((amount - MULTIPLIER * amountBnbCake - CakeEAmount/ 2 ) / 2) / MULTIPLIER;
       
       path[0] = address(nimbusBNB);
       path[1] = address(nbuToken);
-      (uint[] memory amountsBnbNbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), block.timestamp);
+      (uint[] memory amountsBnbNbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), swapDeadline);
 
       path[1] = address(gnbuToken);      
-      (uint[] memory amountsBnbGnbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), block.timestamp);
+      (uint[] memory amountsBnbGnbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), swapDeadline);
       
       return (amountsBnbNbuStaking[1], amountsBnbGnbuStaking[1], liquidityBnbCake);
     }
@@ -194,14 +193,16 @@ contract StakingSet is StakingSetStorage {
         UserSupply storage userSupply = tikSupplies[tokenId];
         require(block.timestamp > userSupply.SupplyTime + lockTime, "StakingSet:: NFT is locked");
         require(userSupply.IsActive, "StakingSet: Token not active");
+
         (uint256 nbuReward, uint256 cakeReward) = getTotalAmountsOfRewards(tokenId);
-        
+        userSupply.IsActive = false;
+        userSupply.BurnTime = block.timestamp;
+
         if(nbuReward > 0) {
             _withdrawUserRewards(tokenId, tokenOwner, nbuReward, cakeReward);
         }
 
-
-        NbuStaking.withdraw(userSupply.NbuStakingAmount);
+        NbuStaking.withdraw(userSupply.NbuStakeNonce);
         GnbuStaking.withdraw(userSupply.GnbuStakeNonce);
         CakeStaking.withdraw(cakePID, userSupply.CakeBnbAmount);
 
@@ -209,8 +210,6 @@ contract StakingSet is StakingSetStorage {
         TransferHelper.safeTransfer(address(gnbuToken), tokenOwner, userSupply.GnbuStakingAmount);
         pancakeRouter.removeLiquidityETH(address(cakeToken), userSupply.CakeBnbAmount, 0, 0, tokenOwner, block.timestamp);
 
-        userSupply.IsActive = false;
-        userSupply.BurnTime = block.timestamp;
      
         emit BurnStakingSet(tokenId, userSupply.NbuStakingAmount, userSupply.GnbuStakingAmount, userSupply.CakeBnbAmount);     
     }
@@ -264,9 +263,9 @@ contract StakingSet is StakingSetStorage {
             emit BalanceNBURewardsNotEnough(tokenOwner, tokenId, totalNbuReward);
         }
 
-        require(nbuToken.balanceOf(address(this)) > totalNbuReward, "StakingSet :: Not enough funds on contract to pay off claim");
-        TransferHelper.safeTransfer(address(nbuToken), tokenOwner, totalNbuReward);
         weightedStakeDate[tokenId] = block.timestamp;
+        require(nbuToken.balanceOf(address(this)) >= totalNbuReward, "StakingSet :: Not enough funds on contract to pay off claim");
+        TransferHelper.safeTransfer(address(nbuToken), tokenOwner, totalNbuReward);
 
         CakeStaking.deposit(cakePID, 0);
         IMasterChef.UserInfo memory user = CakeStaking.userInfo(cakePID, address(this));
@@ -316,13 +315,13 @@ contract StakingSet is StakingSetStorage {
     
     function updateNbuStaking(address newLpStaking) external onlyOwner {
         require(AddressUpgradeable.isContract(newLpStaking), "StakingSet: Not a contract");
-        NbuStaking = INbuStaking(newLpStaking);
+        NbuStaking = IStaking(newLpStaking);
         emit UpdateNbuStaking(newLpStaking);
     }
     
     function updateGnbuStaking(address newLpStaking) external onlyOwner {
         require(AddressUpgradeable.isContract(newLpStaking), "StakingSet: Not a contract");
-        GnbuStaking = IGnbuStaking(newLpStaking);
+        GnbuStaking = IStaking(newLpStaking);
         emit UpdateGnbuStaking(newLpStaking);
     }
     
