@@ -22,6 +22,91 @@ interface INimbusRouter {
     function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
 }
 
+/**
+ * @dev Contract module which allows children to implement an emergency stop
+ * mechanism that can be triggered by an authorized account.
+ *
+ * This module is used through inheritance. It will make available the
+ * modifiers `whenNotPaused` and `whenPaused`, which can be applied to
+ * the functions of your contract. Note that they will not be pausable by
+ * simply including this module, only once the modifiers are put in place.
+ */
+abstract contract Pausable {
+    /**
+     * @dev Emitted when the pause is triggered by `account`.
+     */
+    event Paused(address account);
+
+    /**
+     * @dev Emitted when the pause is lifted by `account`.
+     */
+    event Unpaused(address account);
+
+    bool private _paused;
+
+    /**
+     * @dev Initializes the contract in unpaused state.
+     */
+    constructor() {
+        _paused = false;
+    }
+
+    /**
+     * @dev Returns true if the contract is paused, and false otherwise.
+     */
+    function paused() public view virtual returns (bool) {
+        return _paused;
+    }
+
+    /**
+     * @dev Modifier to make a function callable only when the contract is not paused.
+     *
+     * Requirements:
+     *
+     * - The contract must not be paused.
+     */
+    modifier whenNotPaused() {
+        require(!paused(), "Pausable: paused");
+        _;
+    }
+
+    /**
+     * @dev Modifier to make a function callable only when the contract is paused.
+     *
+     * Requirements:
+     *
+     * - The contract must be paused.
+     */
+    modifier whenPaused() {
+        require(paused(), "Pausable: not paused");
+        _;
+    }
+
+    /**
+     * @dev Triggers stopped state.
+     *
+     * Requirements:
+     *
+     * - The contract must not be paused.
+     */
+    function _pause() internal virtual whenNotPaused {
+        _paused = true;
+        emit Paused(msg.sender);
+    }
+
+    /**
+     * @dev Returns to normal state.
+     *
+     * Requirements:
+     *
+     * - The contract must be paused.
+     */
+    function _unpause() internal virtual whenPaused {
+        _paused = false;
+        emit Unpaused(msg.sender);
+    }
+}
+
 contract Ownable {
     address public owner;
     address public newOwner;
@@ -141,6 +226,11 @@ contract ReentrancyGuard {
     }
 }
 
+interface IPriceFeed {
+    function queryRate(address sourceTokenAddress, address destTokenAddress) external view returns (uint256 rate, uint256 precision);
+    function wbnbToken() external view returns(address);
+}
+
 interface ILockStakingRewards {
     function earned(address account) external view returns (uint256);
     function totalSupply() external view returns (uint256);
@@ -148,6 +238,7 @@ interface ILockStakingRewards {
     function stake(uint256 amount) external;
     function stakeFor(uint256 amount, address user) external;
     function getReward() external;
+    function getRewardForUser(address user) external;
     function withdraw(uint256 nonce) external;
     function withdrawAndGetReward(uint256 nonce) external;
 }
@@ -156,8 +247,20 @@ interface IBEP20Permit {
     function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
 }
 
-contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Ownable {
+contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Pausable, Ownable {
     using SafeBEP20 for IBEP20;
+
+    struct StakeNonceInfo {
+        uint256 stakeTime;
+        uint256 stakingTokenAmount;
+        uint256 rewardsTokenAmount;
+        uint256 rewardRate;
+    }
+
+    struct APYCheckpoint {
+        uint256 timestamp;
+        uint256 rewardRate;
+    }
 
     IBEP20 public immutable rewardsToken;
     INimbusPair public immutable stakingLPToken;
@@ -166,7 +269,17 @@ contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Ow
     address public immutable lPPairTokenB;
     uint256 public rewardRate; 
     uint256 public immutable lockDuration; 
-    uint256 public constant rewardDuration = 365 days; 
+    uint256 public constant rewardDuration = 365 days;
+
+    uint256 public rateChangesNonce;
+    mapping(address => mapping(uint256 => StakeNonceInfo)) public stakeNonceInfos;
+    mapping(uint256 => APYCheckpoint) APYcheckpoints;
+    bool public usePriceFeeds;
+    IPriceFeed public priceFeed;
+    event ToggleUsePriceFeeds(bool indexed usePriceFeeds);
+    event RescueToken(address indexed to, address indexed token, uint amount);
+    event RewardRateUpdated(uint256 indexed rateChangesNonce, uint256 rewardRate, uint256 timestamp);
+    mapping(address => uint256) public stakeNonces;
 
     mapping(address => uint256) public weightedStakeDate;
     mapping(address => mapping(uint256 => uint256)) public stakeLocks;
@@ -211,6 +324,9 @@ contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Ow
         uint tokenBDecimals = IBEP20(_lPPairTokenB).decimals();
         require(tokenBDecimals >= 6, "LockStakingLPRewardFixedAPY: small amount of decimals");
         _tokenBDecimalCompensate = tokenBDecimals - 6;
+
+        emit RewardRateUpdated(rateChangesNonce, _rewardRate, block.timestamp);
+        APYcheckpoints[rateChangesNonce++] = APYCheckpoint(block.timestamp, rewardRate);
     }
 
     function totalSupply() external view override returns (uint256) {
@@ -234,8 +350,20 @@ contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Ow
         return _balancesRewardEquivalent[account];
     }
 
+    function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
+        return stakeNonceInfos[account][nonce].rewardsTokenAmount *
+        (block.timestamp - stakeNonceInfos[account][nonce].stakeTime) *
+        stakeNonceInfos[account][nonce].rewardRate / (100 * rewardsDuration);
+    }
+
     function earned(address account) public view override returns (uint256) {
-        return (_balancesRewardEquivalent[account] * (block.timestamp - weightedStakeDate[account]) * rewardRate) / (100 * rewardDuration);
+        uint256 totalEarned;
+
+        for (uint256 i = 0; i < stakeNonces[account]; i++) {
+            totalEarned += earnedByNonce(account, i);
+        }
+
+        return totalEarned;
     }
 
     function stakeWithPermit(uint256 amount, uint deadline, uint8 v, bytes32 r, bytes32 s) external nonReentrant {
@@ -245,12 +373,12 @@ contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Ow
         _stake(amount, msg.sender);
     }
 
-    function stake(uint256 amount) external override nonReentrant {
+    function stake(uint256 amount) external override whenNotPaused nonReentrant {
         require(amount > 0, "LockStakingLPRewardFixedAPY: Cannot stake 0");
         _stake(amount, msg.sender);
     }
 
-    function stakeFor(uint256 amount, address user) external override nonReentrant {
+    function stakeFor(uint256 amount, address user) external override whenNotPaused nonReentrant {
         require(amount > 0, "LockStakingLPRewardFixedAPY: Cannot stake 0");
         require(user != address(0), "LockStakingLPRewardFixedAPY: Cannot stake for zero address");
         _stake(amount, user);
@@ -269,7 +397,9 @@ contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Ow
 
         uint stakeNonce = stakeNonces[user]++;
         stakeLocks[user][stakeNonce] = block.timestamp + lockDuration;
-        stakeAmounts[user][stakeNonce] = amount;
+        stakeNonceInfos[msg.sender][stakeNonce].stakingTokenAmount = amount;
+        stakeNonceInfos[msg.sender][stakeNonce].stakeTime = block.timestamp;
+        stakeNonceInfos[msg.sender][stakeNonce].rewardRate = rewardRate;
         
         stakeAmountsRewardEquivalent[user][stakeNonce] = amountRewardEquivalent;
         _balancesRewardEquivalent[user] += amountRewardEquivalent;
@@ -279,26 +409,47 @@ contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Ow
 
     //A user can withdraw its staking tokens even if there is no rewards tokens on the contract account
     function withdraw(uint256 nonce) public override nonReentrant {
-        require(stakeAmounts[msg.sender][nonce] > 0, "LockStakingLPRewardFixedAPY: This stake nonce was withdrawn");
+        require(stakeNonceInfos[msg.sender][nonce].stakingTokenAmount > 0, "LockStakingLPRewardFixedAPY: This stake nonce was withdrawn");
         require(stakeLocks[msg.sender][nonce] < block.timestamp, "LockStakingLPRewardFixedAPY: Locked");
-        uint amount = stakeAmounts[msg.sender][nonce];
-        uint amountRewardEquivalent = stakeAmountsRewardEquivalent[msg.sender][nonce];
+        uint amount = stakeNonceInfos[msg.sender][nonce].stakingTokenAmount;
+        uint amountRewardEquivalent = stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount;
+
         _totalSupply -= amount;
         _totalSupplyRewardEquivalent -= amountRewardEquivalent;
         _balances[msg.sender] -= amount;
         _balancesRewardEquivalent[msg.sender] -= amountRewardEquivalent;
         IBEP20(stakingLPToken).safeTransfer(msg.sender, amount);
-        stakeAmounts[msg.sender][nonce] = 0;
-        stakeAmountsRewardEquivalent[msg.sender][nonce] = 0;
+        stakeNonceInfos[msg.sender][nonce].stakingTokenAmount = 0;
+        stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount = 0;
         emit Withdrawn(msg.sender, amount);
     }
 
     function getReward() public override nonReentrant {
         uint256 reward = earned(msg.sender);
+
         if (reward > 0) {
             weightedStakeDate[msg.sender] = block.timestamp;
+
+            for (uint256 i = 0; i < stakeNonces[msg.sender]; i++) {
+                stakeNonceInfos[msg.sender][i].stakeTime = block.timestamp;
+            }
+
             rewardsToken.safeTransfer(msg.sender, reward);
             emit RewardPaid(msg.sender, reward);
+        }
+    }
+
+    function getRewardForUser(address user) public override nonReentrant whenNotPaused {
+        require(msg.sender == owner, "StakingRewards :: isn`t allowed to call rewards");
+
+        uint256 reward = earned(user);
+
+        if (reward > 0) {
+            for (uint256 i = 0; i < stakeNonces[user]; i++) {
+                stakeNonceInfos[user][i].stakeTime = block.timestamp;
+            }
+            rewardsToken.safeTransfer(user, reward);
+            emit RewardPaid(user, reward);
         }
     }
 
@@ -353,7 +504,23 @@ contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Ow
         swapRouter = INimbusRouter(newSwapRouter);
     }
 
-    function rescue(address to, IBEP20 token, uint256 amount) external onlyOwner {
+    function updateRewardRate(uint256 _rewardRate) external onlyOwner {
+        rewardRate = _rewardRate;
+        emit RewardRateUpdated(rateChangesNonce, _rewardRate, block.timestamp);
+        APYcheckpoints[rateChangesNonce++] = APYCheckpoint(block.timestamp, _rewardRate);
+    }
+
+    function updatePriceFeed(address newPriceFeed) external onlyOwner {
+        require(newPriceFeed != address(0), "StakingRewardFixedAPY: Address is zero");
+        priceFeed = IPriceFeed(newPriceFeed);
+    }
+
+    function toggleUsePriceFeeds() external onlyOwner {
+        usePriceFeeds = !usePriceFeeds;
+        emit ToggleUsePriceFeeds(usePriceFeeds);
+    }
+
+    function rescue(address to, IBEP20 token, uint256 amount) external whenPaused onlyOwner {
         require(to != address(0), "LockStakingLPRewardFixedAPY: Cannot rescue to the zero address");
         require(amount > 0, "LockStakingLPRewardFixedAPY: Cannot rescue 0");
         require(token != stakingLPToken, "LockStakingLPRewardFixedAPY: Cannot rescue staking token");
@@ -363,11 +530,16 @@ contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Ow
         emit RescueToken(to, address(token), amount);
     }
 
-    function rescue(address payable to, uint256 amount) external onlyOwner {
+    function rescue(address payable to, uint256 amount) external whenPaused onlyOwner {
         require(to != address(0), "LockStakingLPRewardFixedAPY: Cannot rescue to the zero address");
         require(amount > 0, "LockStakingLPRewardFixedAPY: Cannot rescue 0");
 
         to.transfer(amount);
         emit Rescue(to, amount);
+    }
+
+    function setPaused(bool _paused) external onlyOwner {
+        if (_paused) _pause();
+        else _unpause();
     }
 }
