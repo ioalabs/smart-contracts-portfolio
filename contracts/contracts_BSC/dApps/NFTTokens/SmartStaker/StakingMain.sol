@@ -136,7 +136,7 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
         _userTokens[msg.sender].push(tokenCount); 
         _mint(msg.sender, tokenCount);
         if (WBNB != purchaseToken) {
-            IBEP20(purchaseToken).transferFrom(msg.sender, stakingSet, _amount);
+            require(IBEP20(purchaseToken).transferFrom(msg.sender, stakingSet, _amount), "IBEP20: TRANSFER_FROM_FAILED");
         }
         Address.functionCallWithValue(address(Hub), abi.encodeWithSignature("stake(uint256,uint256,uint256)",_setNum,_amount,tokenCount), msg.value, "StakingMain::buySmartStaker failed");
     }
@@ -383,7 +383,7 @@ contract StakingMain is IBEP721, IBEP721Metadata, Ownable {
         require(to != address(0), "StakingMain: Cannot rescue to the zero address");
         require(amount > 0, "StakingMain: Cannot rescue 0");
 
-        IBEP20(tokenAddress).transfer(to, amount);
+        require(IBEP20(tokenAddress).transfer(to, amount), "IBEP20: TRANSFER_FAILED");
         emit RescueToken(to, address(tokenAddress), amount);
     }
 
