@@ -63,6 +63,7 @@ contract StakingSetBusd is StakingSetStorage {
         require(IERC20Upgradeable(_nbuToken).approve(_NbuStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
         require(IERC20Upgradeable(_gnbuToken).approve(_GnbuStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
         require(IERC20Upgradeable(_busdToken).approve(_nimbusRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
+        require(IERC20Upgradeable(_busdToken).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
 
         require(IERC20Upgradeable(_lpBnbCake).approve(_CakeStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
         require(IERC20Upgradeable(_lpBnbCake).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
@@ -132,8 +133,8 @@ contract StakingSetBusd is StakingSetStorage {
       uint256 swapDeadline = block.timestamp + 1200; // 20 mins
       address[] memory path = new address[](2);
       path[0] = address(busdToken);
-      path[1] = address(nimbusBNB);
-      (uint[] memory amountsBusdBnb) = nimbusRouter.swapExactTokensForBNB(amount, 0, path, address(this), swapDeadline);
+      path[1] = address(binanceBNB);
+      (uint[] memory amountsBusdBnb) = pancakeRouter.swapExactTokensForETH(amount, 0, path, address(this), swapDeadline);
       amount = amountsBusdBnb[1] * MULTIPLIER;
       
       uint CakeEAmount = amount * 30 / 100;

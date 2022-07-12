@@ -107,6 +107,9 @@ interface IPancakeRouter {
         address to,
         uint deadline
     ) external returns (uint amountToken, uint amountBNB);
+    function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
+        external
+        returns (uint[] memory amounts);
 }
 
 interface IStaking {
