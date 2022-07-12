@@ -234,9 +234,10 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable {
         _totalSupplyRewardEquivalent -= amountRewardEquivalent;
         _balances[msg.sender] -= amount;
         _balancesRewardEquivalent[msg.sender] -= amountRewardEquivalent;
-        stakingToken.safeTransfer(msg.sender, amount);
         stakeAmounts[msg.sender][nonce] = 0;
         stakeAmountsRewardEquivalent[msg.sender][nonce] = 0;
+        stakingToken.safeTransfer(msg.sender, amount);
+       
         emit Withdrawn(msg.sender, amount);
     }
 
