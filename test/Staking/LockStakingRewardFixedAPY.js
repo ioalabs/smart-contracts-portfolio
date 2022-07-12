@@ -322,6 +322,28 @@ contract("LockStakingRewardFixedAPY", (accounts) => {
         ).to.be.bignumber.equal(timeStamp);
       });
 
+      it("testPaused", async () => {
+        const stakeAmount = new BN(100000);
+        const withdrawAmount = new BN(50000);
+
+        // stake
+        await expect(this.contract.stake(stakeAmount)).not.to.be.reverted;
+        await this.contract.setPaused(true);
+        await expect(this.contract.stake(stakeAmount)).to.be.reverted;
+
+        // withdraw
+        await this.contract.setPaused(false);
+        await expect(this.contract.withdraw(withdrawAmount, '0x0')).not.to.be.reverted;
+        await this.contract.setPaused(true);
+        await expect(this.contract.withdraw(withdrawAmount)).to.be.reverted;
+
+        // getReward
+        await this.contract.setPaused(false);
+        await expect(this.contract.getReward()).not.to.be.reverted;
+        await this.contract.setPaused(true);
+        await expect(this.contract.getReward()).to.be.reverted;
+      })
+
       it("stake for another account ", async function () {
         const { logs } = await this.contract.stakeFor(stakeAmount, client, {
           from: owner,
