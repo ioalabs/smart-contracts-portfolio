@@ -1,7 +1,3 @@
-/**
- *Submitted for verification at BscScan.com on 2022-06-16
-*/
-
 pragma solidity ^0.8.0;
 
 interface IBEP20 {
@@ -371,9 +367,10 @@ contract LockStakingRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Owna
         _totalSupplyRewardEquivalent -= amountRewardEquivalent;
         _balances[msg.sender] -= amount;
         _balancesRewardEquivalent[msg.sender] -= amountRewardEquivalent;
-        stakingToken.safeTransfer(msg.sender, amount);
         stakeNonceInfos[msg.sender][nonce].stakingTokenAmount = 0;
         stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount = 0;
+        stakingToken.safeTransfer(msg.sender, amount);
+        
         emit Withdrawn(msg.sender, amount);
     }
 
@@ -392,7 +389,9 @@ contract LockStakingRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Owna
         require(msg.sender == affiliateContract || msg.sender == owner, "LockStakingRewardFixedAPY :: isn`t allowed to call rewards");
         uint256 reward = earned(user);
         if (reward > 0) {
-            weightedStakeDate[user] = block.timestamp;
+            for (uint256 i = 0; i < stakeNonces[user]; i++) {
+                stakeNonceInfos[user][i].stakeTime = block.timestamp;
+            }
             rewardsToken.safeTransfer(user, reward);
             emit RewardPaid(user, reward);
         }
@@ -401,6 +400,15 @@ contract LockStakingRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Owna
     function withdrawAndGetReward(uint256 nonce) external override {
         getReward();
         withdraw(nonce);
+    }
+
+    function exit() external {
+        getReward();
+        for (uint256 i = 0; i < stakeNonces[msg.sender]; i++) {
+            if (stakeNonceInfos[msg.sender][i].stakingTokenAmount > 0) {
+                withdraw(i);
+            }
+        }
     }
 
     function getEquivalentAmount(uint amount) public view returns (uint) {
