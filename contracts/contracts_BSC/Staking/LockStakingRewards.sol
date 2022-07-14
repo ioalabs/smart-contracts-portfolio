@@ -1,135 +1,13 @@
-pragma solidity =0.8.0;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.15;
 
-interface IBEP20 {
-    function totalSupply() external view returns (uint256);
-    function decimals() external pure returns (uint);
-    function balanceOf(address account) external view returns (uint256);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function allowance(address owner, address spender) external view returns (uint256);
-    function approve(address spender, uint256 amount) external returns (bool);
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function getOwner() external view returns (address);
-    
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-}
-
-contract Ownable {
-    address public owner;
-    address public newOwner;
-
-    event OwnershipTransferred(address indexed from, address indexed to);
-
-    constructor() {
-        owner = msg.sender;
-        emit OwnershipTransferred(address(0), owner);
-    }
-
-    modifier onlyOwner {
-        require(msg.sender == owner, "Ownable: Caller is not the owner");
-        _;
-    }
-
-    function getOwner() external view returns (address) {
-        return owner;
-    }
-
-    function transferOwnership(address transferOwner) external onlyOwner {
-        require(transferOwner != newOwner);
-        newOwner = transferOwner;
-    }
-
-    function acceptOwnership() virtual external {
-        require(msg.sender == newOwner);
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
-        newOwner = address(0);
-    }
-}
-
-library Math {
-    function max(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a >= b ? a : b;
-    }
-
-    function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a < b ? a : b;
-    }
-
-    function average(uint256 a, uint256 b) internal pure returns (uint256) {
-        return (a / 2) + (b / 2) + ((a % 2 + b % 2) / 2);
-    }
-}
-
-library Address {
-    function isContract(address account) internal view returns (bool) {
-        // This method relies in extcodesize, which returns 0 for contracts in construction,
-        // since the code is only stored at the end of the constructor execution.
-
-        uint256 size;
-        // solhint-disable-next-line no-inline-assembly
-        assembly { size := extcodesize(account) }
-        return size > 0;
-    }
-}
-
-library SafeBEP20 {
-    using Address for address;
-
-    function safeTransfer(IBEP20 token, address to, uint256 value) internal {
-        callOptionalReturn(token, abi.encodeWithSelector(token.transfer.selector, to, value));
-    }
-
-    function safeTransferFrom(IBEP20 token, address from, address to, uint256 value) internal {
-        callOptionalReturn(token, abi.encodeWithSelector(token.transferFrom.selector, from, to, value));
-    }
-
-    function safeApprove(IBEP20 token, address spender, uint256 value) internal {
-        require((value == 0) || (token.allowance(address(this), spender) == 0),
-            "SafeBEP20: approve from non-zero to non-zero allowance"
-        );
-        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, value));
-    }
-
-    function safeIncreaseAllowance(IBEP20 token, address spender, uint256 value) internal {
-        uint256 newAllowance = token.allowance(address(this), spender) + value;
-        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
-    }
-
-    function safeDecreaseAllowance(IBEP20 token, address spender, uint256 value) internal {
-        uint256 newAllowance = token.allowance(address(this), spender) - value;
-        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
-    }
-
-    function callOptionalReturn(IBEP20 token, bytes memory data) private {
-        require(address(token).isContract(), "SafeBEP20: call to non-contract");
-
-        (bool success, bytes memory returndata) = address(token).call(data);
-        require(success, "SafeBEP20: low-level call failed");
-
-        if (returndata.length > 0) { 
-            require(abi.decode(returndata, (bool)), "SafeBEP20: BEP20 operation did not succeed");
-        }
-    }
-}
-
-contract ReentrancyGuard {
-    /// @dev counter to allow mutex lock with only one SSTORE operation
-    uint256 private _guardCounter;
-
-    constructor () {
-        // The counter starts at one to prevent changing it from zero to a non-zero
-        // value, which is a more expensive operation.
-        _guardCounter = 1;
-    }
-
-    modifier nonReentrant() {
-        _guardCounter += 1;
-        uint256 localCounter = _guardCounter;
-        _;
-        require(localCounter == _guardCounter, "ReentrancyGuard: reentrant call");
-    }
-}
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 interface ILockStakingRewards {
     function lastTimeRewardApplicable() external view returns (uint256);
@@ -150,10 +28,10 @@ interface IBEP20Permit {
 }
 
 contract LockStakingRewards is ILockStakingRewards, ReentrancyGuard, Ownable {
-    using SafeBEP20 for IBEP20;
+    using SafeERC20 for IERC20;
 
-    IBEP20 public immutable rewardsToken;
-    IBEP20 public immutable stakingToken;
+    IERC20 public immutable rewardsToken;
+    IERC20 public immutable stakingToken;
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
     uint256 public constant rewardsDuration = 60 days; 
@@ -184,9 +62,9 @@ contract LockStakingRewards is ILockStakingRewards, ReentrancyGuard, Ownable {
         uint _lockDuration
     ) {
         require(_rewardsToken != address(0) && _stakingToken != address(0), "LockStakingRewards: Zero address(es)");
-        rewardsToken = IBEP20(_rewardsToken);
-        stakingToken = IBEP20(_stakingToken);
-        require(IBEP20(_rewardsToken).decimals() == 18 && IBEP20(_stakingToken).decimals() == 18, "LockStakingRewards: Unsopported decimals");
+        rewardsToken = IERC20(_rewardsToken);
+        stakingToken = IERC20(_stakingToken);
+        require(IERC20(_rewardsToken).decimals() == 18 && IERC20(_stakingToken).decimals() == 18, "LockStakingRewards: Unsopported decimals");
         lockDuration = _lockDuration;
     }
 
@@ -312,7 +190,7 @@ contract LockStakingRewards is ILockStakingRewards, ReentrancyGuard, Ownable {
         emit RewardAdded(reward);
     }
 
-    function rescue(address to, IBEP20 token, uint256 amount) external onlyOwner {
+    function rescue(address to, IERC20 token, uint256 amount) external onlyOwner {
         require(to != address(0), "LockStakingRewards: Cannot rescue to the zero address");
         require(amount > 0, "LockStakingRewards: Cannot rescue 0");
         require(token != rewardsToken, "LockStakingRewards: Cannot rescue rewards token");
