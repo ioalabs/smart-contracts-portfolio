@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.15;
+pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
@@ -48,22 +48,10 @@ interface IEIP20Permit {
 }
 
 interface IEIP20 {
-   function decimals() external returns (uint8);
+    function decimals() external returns (uint8);
 }
 
-
-
-/**
- * @dev Contract module which allows children to implement an emergency stop
- * mechanism that can be triggered by an authorized account.
- *
- * This module is used through inheritance. It will make available the
- * modifiers `whenNotPaused` and `whenPaused`, which can be applied to
- * the functions of your contract. Note that they will not be pausable by
- * simply including this module, only once the modifiers are put in place.
- */
-
-contract NimbusP2P_V2Storage is Initializable, OwnableUpgradeable, PausableUpgradeable {    
+contract NimbusP2P_V2Storage is Initializable, ContextUpgradeable, OwnableUpgradeable, PausableUpgradeable {    
     struct TradeSingle {
         address initiator;
         address counterparty;
@@ -112,7 +100,7 @@ contract NimbusP2P_V2Storage is Initializable, OwnableUpgradeable, PausableUpgra
     bool public isAnyEIP20Allowed;
     mapping(address => bool) public allowedEIP20;
 
-    uint internal unlocked = 1;
+    uint internal unlocked;
 
     event NewTradeSingle(address indexed user, address indexed proposedAsset, uint proposedAmount, uint proposedTokenId, address indexed askedAsset, uint askedAmount, uint askedTokenId, uint deadline, uint tradeId);
     event NewTradeMulti(address indexed user, address[] proposedAssets, uint proposedAmount, uint[] proposedIds, address[] askedAssets, uint askedAmount, uint[] askedIds, uint deadline, uint indexed tradeId);
@@ -127,11 +115,8 @@ contract NimbusP2P_V2Storage is Initializable, OwnableUpgradeable, PausableUpgra
     event RescueToken(address indexed to, address indexed token, uint amount);
 }
 
-
-
 contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {    
     using AddressUpgradeable for address;
-    address public target;
 
     function initialize(
         address[] memory _allowedEIP20Tokens
@@ -146,6 +131,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
             emit UpdateAllowedEIP20Tokens(_allowedEIP20Tokens[i], true);
         }
         isAnyNFTAllowed = true;
+        unlocked = 1;
         emit UpdateIsAnyNFTAllowed(isAnyNFTAllowed);
     }
 
@@ -692,4 +678,4 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         to.transfer(amount);
         emit Rescue(to, amount);
     }
- }
+}
