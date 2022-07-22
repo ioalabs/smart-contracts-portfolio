@@ -1,241 +1,20 @@
-pragma solidity =0.8.0;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.15;
 
-interface IBEP20 {
-    function totalSupply() external view returns (uint256);
-    function decimals() external pure returns (uint8);
-    function balanceOf(address account) external view returns (uint256);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function allowance(address owner, address spender) external view returns (uint256);
-    function approve(address spender, uint256 amount) external returns (bool);
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function getOwner() external view returns (address);
-    
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-}
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
-interface INimbusPair is IBEP20 {
+interface INimbusPair is IERC20 {
     function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
 }
 
 interface INimbusRouter {
     function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
-}
-
-/**
- * @dev Contract module which allows children to implement an emergency stop
- * mechanism that can be triggered by an authorized account.
- *
- * This module is used through inheritance. It will make available the
- * modifiers `whenNotPaused` and `whenPaused`, which can be applied to
- * the functions of your contract. Note that they will not be pausable by
- * simply including this module, only once the modifiers are put in place.
- */
-abstract contract Pausable {
-    /**
-     * @dev Emitted when the pause is triggered by `account`.
-     */
-    event Paused(address account);
-
-    /**
-     * @dev Emitted when the pause is lifted by `account`.
-     */
-    event Unpaused(address account);
-
-    bool private _paused;
-
-    /**
-     * @dev Initializes the contract in unpaused state.
-     */
-    constructor() {
-        _paused = false;
-    }
-
-    /**
-     * @dev Returns true if the contract is paused, and false otherwise.
-     */
-    function paused() public view virtual returns (bool) {
-        return _paused;
-    }
-
-    /**
-     * @dev Modifier to make a function callable only when the contract is not paused.
-     *
-     * Requirements:
-     *
-     * - The contract must not be paused.
-     */
-    modifier whenNotPaused() {
-        require(!paused(), "Pausable: paused");
-        _;
-    }
-
-    /**
-     * @dev Modifier to make a function callable only when the contract is paused.
-     *
-     * Requirements:
-     *
-     * - The contract must be paused.
-     */
-    modifier whenPaused() {
-        require(paused(), "Pausable: not paused");
-        _;
-    }
-
-    /**
-     * @dev Triggers stopped state.
-     *
-     * Requirements:
-     *
-     * - The contract must not be paused.
-     */
-    function _pause() internal virtual whenNotPaused {
-        _paused = true;
-        emit Paused(msg.sender);
-    }
-
-    /**
-     * @dev Returns to normal state.
-     *
-     * Requirements:
-     *
-     * - The contract must be paused.
-     */
-    function _unpause() internal virtual whenPaused {
-        _paused = false;
-        emit Unpaused(msg.sender);
-    }
-}
-
-contract Ownable {
-    address public owner;
-    address public newOwner;
-
-    event OwnershipTransferred(address indexed from, address indexed to);
-
-    constructor() {
-        owner = msg.sender;
-        emit OwnershipTransferred(address(0), owner);
-    }
-
-    modifier onlyOwner {
-        require(msg.sender == owner, "Ownable: Caller is not the owner");
-        _;
-    }
-
-    function getOwner() external view returns (address) {
-        return owner;
-    }
-
-    function transferOwnership(address transferOwner) external onlyOwner {
-        require(transferOwner != newOwner);
-        newOwner = transferOwner;
-    }
-
-    function acceptOwnership() virtual external {
-        require(msg.sender == newOwner);
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
-        newOwner = address(0);
-    }
-}
-
-library Math {
-    function max(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a >= b ? a : b;
-    }
-
-    function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a < b ? a : b;
-    }
-
-    function average(uint256 a, uint256 b) internal pure returns (uint256) {
-        return (a / 2) + (b / 2) + ((a % 2 + b % 2) / 2);
-    }
-
-    // babylonian method (https://en.wikipedia.org/wiki/Methods_of_computing_square_roots#Babylonian_method)
-    function sqrt(uint y) internal pure returns (uint z) {
-        if (y > 3) {
-            z = y;
-            uint x = y / 2 + 1;
-            while (x < z) {
-                z = x;
-                x = (y / x + x) / 2;
-            }
-        } else if (y != 0) {
-            z = 1;
-        }
-    }
-}
-
-library Address {
-    function isContract(address account) internal view returns (bool) {
-        // This method relies in extcodesize, which returns 0 for contracts in construction, 
-        // since the code is only stored at the end of the constructor execution.
-
-        uint256 size;
-        // solhint-disable-next-line no-inline-assembly
-        assembly { size := extcodesize(account) }
-        return size > 0;
-    }
-}
-
-library SafeBEP20 {
-    using Address for address;
-
-    function safeTransfer(IBEP20 token, address to, uint256 value) internal {
-        callOptionalReturn(token, abi.encodeWithSelector(token.transfer.selector, to, value));
-    }
-
-    function safeTransferFrom(IBEP20 token, address from, address to, uint256 value) internal {
-        callOptionalReturn(token, abi.encodeWithSelector(token.transferFrom.selector, from, to, value));
-    }
-
-    function safeApprove(IBEP20 token, address spender, uint256 value) internal {
-        require((value == 0) || (token.allowance(address(this), spender) == 0),
-            "SafeBEP20: approve from non-zero to non-zero allowance"
-        );
-        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, value));
-    }
-
-    function safeIncreaseAllowance(IBEP20 token, address spender, uint256 value) internal {
-        uint256 newAllowance = token.allowance(address(this), spender) + value;
-        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
-    }
-
-    function safeDecreaseAllowance(IBEP20 token, address spender, uint256 value) internal {
-        uint256 newAllowance = token.allowance(address(this), spender) - value;
-        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
-    }
-
-    function callOptionalReturn(IBEP20 token, bytes memory data) private {
-        require(address(token).isContract(), "SafeBEP20: call to non-contract");
-
-        (bool success, bytes memory returndata) = address(token).call(data);
-        require(success, "SafeBEP20: low-level call failed");
-
-        if (returndata.length > 0) { 
-            require(abi.decode(returndata, (bool)), "SafeBEP20: BEP20 operation did not succeed");
-        }
-    }
-}
-
-contract ReentrancyGuard {
-    /// @dev counter to allow mutex lock with only one SSTORE operation
-    uint256 private _guardCounter;
-
-    constructor () {
-        // The counter starts at one to prevent changing it from zero to a non-zero
-        // value, which is a more expensive operation.
-        _guardCounter = 1;
-    }
-
-    modifier nonReentrant() {
-        _guardCounter += 1;
-        uint256 localCounter = _guardCounter;
-        _;
-        require(localCounter == _guardCounter, "ReentrancyGuard: reentrant call");
-    }
 }
 
 interface IPriceFeed {
@@ -260,7 +39,7 @@ interface IBEP20Permit {
 }
 
 contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Pausable, Ownable {
-    using SafeBEP20 for IBEP20;
+    using SafeERC20 for IERC20;
 
     struct StakeNonceInfo {
         uint256 stakeTime;
@@ -274,7 +53,7 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Pausable, 
         uint256 rewardRate;
     }
 
-    IBEP20 public immutable rewardsToken;
+    IERC20 public immutable rewardsToken;
     INimbusPair public immutable stakingLPToken;
     INimbusRouter public swapRouter;
     address public immutable lPPairTokenA;
@@ -320,16 +99,16 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Pausable, 
         uint _rewardRate
     ) {
         require(_rewardsToken != address(0) && _stakingLPToken != address(0) && _lPPairTokenA != address(0) && _lPPairTokenB != address(0) && _swapRouter != address(0), "StakingLPRewardFixedAPY: Zero address(es)");
-        rewardsToken = IBEP20(_rewardsToken);
+        rewardsToken = IERC20(_rewardsToken);
         stakingLPToken = INimbusPair(_stakingLPToken);
         swapRouter = INimbusRouter(_swapRouter);
         rewardRate = _rewardRate;
         lPPairTokenA = _lPPairTokenA;
         lPPairTokenB = _lPPairTokenB;
-        uint tokenADecimals = IBEP20(_lPPairTokenA).decimals();
+        uint tokenADecimals = IERC20(_lPPairTokenA).decimals();
         require(tokenADecimals >= 6, "StakingLPRewardFixedAPY: small amount of decimals");
         _tokenADecimalCompensate = tokenADecimals - 6;
-        uint tokenBDecimals = IBEP20(_lPPairTokenB).decimals();
+        uint tokenBDecimals = IERC20(_lPPairTokenB).decimals();
         require(tokenBDecimals >= 6, "StakingLPRewardFixedAPY: small amount of decimals");
         _tokenBDecimalCompensate = tokenBDecimals - 6;
 
@@ -393,7 +172,7 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Pausable, 
     }
 
     function _stake(uint256 amount, address user) private {
-        IBEP20(stakingLPToken).safeTransferFrom(msg.sender, address(this), amount);
+        IERC20(stakingLPToken).safeTransferFrom(msg.sender, address(this), amount);
         uint amountRewardEquivalent = getCurrentLPPrice() * amount / 1e18;
 
         _totalSupply += amount;
@@ -423,7 +202,7 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Pausable, 
         _totalSupplyRewardEquivalent -= amountRewardEquivalent;
         _balances[msg.sender] -= amount;
         _balancesRewardEquivalent[msg.sender] -= amountRewardEquivalent;
-        IBEP20(stakingLPToken).safeTransfer(msg.sender, amount);
+        IERC20(stakingLPToken).safeTransfer(msg.sender, amount);
         stakeNonceInfos[msg.sender][nonce].stakingTokenAmount = 0;
         stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount = 0;
 
@@ -491,7 +270,7 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Pausable, 
             tokenBToRewardPrice = 1e18;
         }
 
-        uint totalLpSupply = IBEP20(stakingLPToken).totalSupply();
+        uint totalLpSupply = IERC20(stakingLPToken).totalSupply();
         require(totalLpSupply > 0, "StakingLPRewardFixedAPY: No liquidity for pair");
         (uint reserveA, uint reaserveB,) = stakingLPToken.getReserves();
         uint price = 
@@ -528,7 +307,7 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Pausable, 
         emit ToggleUsePriceFeeds(usePriceFeeds);
     }
 
-    function rescue(address to, IBEP20 token, uint256 amount) external whenPaused onlyOwner {
+    function rescue(address to, IERC20 token, uint256 amount) external whenPaused onlyOwner {
         require(to != address(0), "StakingLPRewardFixedAPY: Cannot rescue to the zero address");
         require(amount > 0, "StakingLPRewardFixedAPY: Cannot rescue 0");
         require(token != stakingLPToken, "StakingLPRewardFixedAPY: Cannot rescue staking token");
