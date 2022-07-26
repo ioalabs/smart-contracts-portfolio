@@ -74,7 +74,6 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Pausable, 
     mapping(address => uint256) public weightedStakeDate;
     mapping(address => mapping(uint256 => uint256)) public stakeAmounts;
     mapping(address => mapping(uint256 => uint256)) public stakeAmountsRewardEquivalent;
-    mapping(address => uint256) public stakeNonces;
 
     uint256 private _totalSupply;
     uint256 private _totalSupplyRewardEquivalent;

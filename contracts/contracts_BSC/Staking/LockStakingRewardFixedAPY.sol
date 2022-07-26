@@ -74,7 +74,6 @@ contract LockStakingRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Paus
     event ToggleUsePriceFeeds(bool indexed usePriceFeeds);
     event RescueToken(address indexed to, address indexed token, uint amount);
     event RewardRateUpdated(uint256 indexed rateChangesNonce, uint256 rewardRate, uint256 timestamp);
-    mapping(address => uint256) public stakeNonces;
 
     event RewardUpdated(uint256 reward);
     event Staked(address indexed user, uint256 amount);

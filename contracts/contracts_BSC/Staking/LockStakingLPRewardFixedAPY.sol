@@ -91,7 +91,6 @@ contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Pa
     mapping(address => mapping(uint256 => uint256)) public stakeLocks;
     mapping(address => mapping(uint256 => uint256)) public stakeAmounts;
     mapping(address => mapping(uint256 => uint256)) public stakeAmountsRewardEquivalent;
-    mapping(address => uint256) public stakeNonces;
 
     uint256 private _totalSupply;
     uint256 private _totalSupplyRewardEquivalent;
@@ -159,7 +158,7 @@ contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Pa
     function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
         return stakeNonceInfos[account][nonce].rewardsTokenAmount *
         (block.timestamp - stakeNonceInfos[account][nonce].stakeTime) *
-        stakeNonceInfos[account][nonce].rewardRate / (100 * rewardsDuration);
+        stakeNonceInfos[account][nonce].rewardRate / (100 * rewardDuration);
     }
 
     function earned(address account) public view override returns (uint256) {
