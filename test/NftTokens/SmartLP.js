@@ -117,9 +117,8 @@ contract("SmartLP", (accounts) => {
     });
 
     token = await SmartLP.new();
-    smartLPProxy = await SmartLPProxy.new(token.address);
-    contractSmartLP = await SmartLP.at(smartLPProxy.address);
-    let a = await contractSmartLP.initialize(
+
+    contractSmartLP = await deployProxy(SmartLP, [
       router.address,
       wbnb.address,
       nbu.address,
@@ -128,8 +127,8 @@ contract("SmartLP", (accounts) => {
       lpToken.address,
       bnbNbuPair.address,
       bnbGnbuPair.address,
-      lending.address
-    )
+    ]);
+    smartLPProxy = await SmartLPProxy.new(contractSmartLP.address);
 
     await nbu.approve(contractSmartLP.address, MAX_UINT256, {
       from: accounts[0],

@@ -1,5 +1,9 @@
 pragma solidity =0.8.0;
 
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
 library TransferHelper {
     function safeApprove(address token, address to, uint value) internal {
@@ -350,7 +354,7 @@ interface ILending {
     function burnToBnb(address receiver, uint256 burnAmount) external returns (uint256 loanAmountPaid);
 }
 
-contract SmartLPStorage is Ownable, Context, ERC165, ReentrancyGuard {    
+contract SmartLPStorage is Initializable, OwnableUpgradeable, ContextUpgradeable, ERC165, ReentrancyGuardUpgradeable {
     IWBNB public WBNB;
     IRouter public swapRouter;
     ILpStaking public lpStakingBnbNbu;
@@ -448,7 +452,7 @@ contract SmartLPProxy is SmartLPStorage {
 contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
     using Address for address;
     using Strings for uint256;
-    
+
     address public target;
 
     function initialize(
@@ -461,7 +465,11 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
         address _lpStakingBnbNbu, 
         address _lpStakingBnbGnbu, 
         address _lendingContract
-    ) external onlyOwner {
+    ) public initializer {
+        __Context_init();
+        __Ownable_init();
+        __ReentrancyGuard_init();
+
         require(Address.isContract(_swapRouter), "NimbusSmartLP_V1: Not contract");
         require(Address.isContract(_wbnb), "NimbusSmartLP_V1: Not contract");
         require(Address.isContract(_nbuToken), "NimbusSmartLP_V1: Not contract");
@@ -491,7 +499,7 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
         IBEP20(_bnbNbuPair).approve(address(_swapRouter), type(uint256).max);
         IBEP20(_bnbNbuPair).approve(address(_lpStakingBnbNbu), type(uint256).max);
         IBEP20(_gnbuBnbPair).approve(address(_lpStakingBnbGnbu), type(uint256).max);  
-        IBEP20(_gnbuBnbPair).approve(address(_swapRouter), type(uint256).max);  
+        IBEP20(_gnbuBnbPair).approve(address(_swapRouter), type(uint256).max);
     }
 
     receive() external payable {
