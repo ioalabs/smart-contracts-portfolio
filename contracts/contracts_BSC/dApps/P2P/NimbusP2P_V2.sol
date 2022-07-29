@@ -1,4 +1,11 @@
-pragma solidity =0.8.0;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.7;
+
+import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 library TransferHelper {
     function safeApprove(address token, address to, uint value) internal {
@@ -16,15 +23,6 @@ library TransferHelper {
     function safeTransferBNB(address to, uint value) internal {
         (bool success,) = to.call{value:value}(new bytes(0));
         require(success, 'TransferHelper: BNB_TRANSFER_FAILED');
-    }
-}
-
-library Address {
-    function isContract(address account) internal view returns (bool) {
-        uint256 size;
-        // solhint-disable-next-line no-inline-assembly
-        assembly { size := extcodesize(account) }
-        return size > 0;
     }
 }
 
@@ -50,128 +48,10 @@ interface IEIP20Permit {
 }
 
 interface IEIP20 {
-   function decimals() external returns (uint8);
+    function decimals() external returns (uint8);
 }
 
-contract Ownable {
-    address public owner;
-    address public newOwner;
-
-    event OwnershipTransferred(address indexed from, address indexed to);
-
-    constructor() {
-        owner = msg.sender;
-        emit OwnershipTransferred(address(0), owner);
-    }
-
-    modifier onlyOwner {
-        require(msg.sender == owner, "Ownable: Caller is not the owner");
-        _;
-    }
-
-    function getOwner() external view returns (address) {
-        return owner;
-    }
-
-    function transferOwnership(address transferOwner) external onlyOwner {
-        require(transferOwner != newOwner);
-        newOwner = transferOwner;
-    }
-
-    function acceptOwnership() virtual external {
-        require(msg.sender == newOwner);
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
-        newOwner = address(0);
-    }
-}
-
-/**
- * @dev Contract module which allows children to implement an emergency stop
- * mechanism that can be triggered by an authorized account.
- *
- * This module is used through inheritance. It will make available the
- * modifiers `whenNotPaused` and `whenPaused`, which can be applied to
- * the functions of your contract. Note that they will not be pausable by
- * simply including this module, only once the modifiers are put in place.
- */
-abstract contract Pausable {
-    /**
-     * @dev Emitted when the pause is triggered by `account`.
-     */
-    event Paused(address account);
-
-    /**
-     * @dev Emitted when the pause is lifted by `account`.
-     */
-    event Unpaused(address account);
-
-    bool private _paused;
-
-    /**
-     * @dev Initializes the contract in unpaused state.
-     */
-    constructor() {
-        _paused = false;
-    }
-
-    /**
-     * @dev Returns true if the contract is paused, and false otherwise.
-     */
-    function paused() public view virtual returns (bool) {
-        return _paused;
-    }
-
-    /**
-     * @dev Modifier to make a function callable only when the contract is not paused.
-     *
-     * Requirements:
-     *
-     * - The contract must not be paused.
-     */
-    modifier whenNotPaused() {
-        require(!paused(), "Pausable: paused");
-        _;
-    }
-
-    /**
-     * @dev Modifier to make a function callable only when the contract is paused.
-     *
-     * Requirements:
-     *
-     * - The contract must be paused.
-     */
-    modifier whenPaused() {
-        require(paused(), "Pausable: not paused");
-        _;
-    }
-
-    /**
-     * @dev Triggers stopped state.
-     *
-     * Requirements:
-     *
-     * - The contract must not be paused.
-     */
-    function _pause() internal virtual whenNotPaused {
-        _paused = true;
-        emit Paused(msg.sender);
-    }
-
-    /**
-     * @dev Returns to normal state.
-     *
-     * Requirements:
-     *
-     * - The contract must be paused.
-     */
-    function _unpause() internal virtual whenPaused {
-        _paused = false;
-        emit Unpaused(msg.sender);
-    }
-}
-
-contract NimbusP2P_V2Storage is Ownable, Pausable {    
+contract NimbusP2P_V2Storage is Initializable, ContextUpgradeable, OwnableUpgradeable, PausableUpgradeable {    
     struct TradeSingle {
         address initiator;
         address counterparty;
@@ -220,7 +100,7 @@ contract NimbusP2P_V2Storage is Ownable, Pausable {
     bool public isAnyEIP20Allowed;
     mapping(address => bool) public allowedEIP20;
 
-    uint internal unlocked = 1;
+    uint internal unlocked;
 
     event NewTradeSingle(address indexed user, address indexed proposedAsset, uint proposedAmount, uint proposedTokenId, address indexed askedAsset, uint askedAmount, uint askedTokenId, uint deadline, uint tradeId);
     event NewTradeMulti(address indexed user, address[] proposedAssets, uint proposedAmount, uint[] proposedIds, address[] askedAssets, uint askedAmount, uint[] askedIds, uint deadline, uint indexed tradeId);
@@ -235,56 +115,23 @@ contract NimbusP2P_V2Storage is Ownable, Pausable {
     event RescueToken(address indexed to, address indexed token, uint amount);
 }
 
-contract NimbusP2P_V2Proxy is NimbusP2P_V2Storage {
-    address public target;
-    
-    event SetTarget(address indexed newTarget);
-
-    constructor(address _newTarget) NimbusP2P_V2Storage() {
-        _setTarget(_newTarget);
-    }
-
-    fallback() external payable {
-        if (gasleft() <= 2300) {
-            return;
-        }
-
-        address target_ = target;
-        bytes memory data = msg.data;
-        assembly {
-            let result := delegatecall(gas(), target_, add(data, 0x20), mload(data), 0, 0)
-            let size := returndatasize()
-            let ptr := mload(0x40)
-            returndatacopy(ptr, 0, size)
-            switch result
-            case 0 { revert(ptr, size) }
-            default { return(ptr, size) }
-        }
-    }
-
-    function setTarget(address _newTarget) external onlyOwner {
-        _setTarget(_newTarget);
-    }
-
-    function _setTarget(address _newTarget) internal {
-        require(Address.isContract(_newTarget), "Target not a contract");
-        target = _newTarget;
-        emit SetTarget(_newTarget);
-    }
-}
-
 contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {    
-    address public target;
+    using AddressUpgradeable for address;
 
     function initialize(
         address[] memory _allowedEIP20Tokens
-    ) external onlyOwner {
+    ) public initializer {
+        __Context_init();
+        __Ownable_init();
+        __Pausable_init();
+
         for (uint256 i; i < _allowedEIP20Tokens.length; i++) {
-            require(Address.isContract(_allowedEIP20Tokens[i]));
+            require(AddressUpgradeable.isContract(_allowedEIP20Tokens[i]));
             allowedEIP20[_allowedEIP20Tokens[i]] = true;
             emit UpdateAllowedEIP20Tokens(_allowedEIP20Tokens[i], true);
         }
         isAnyNFTAllowed = true;
+        unlocked = 1;
         emit UpdateIsAnyNFTAllowed(isAnyNFTAllowed);
     }
 
@@ -305,7 +152,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
     }
 
     function createTradeEIP20ToEIP20(address proposedAsset, uint proposedAmount, address askedAsset, uint askedAmount, uint deadline) external returns (uint tradeId) {
-        require(Address.isContract(proposedAsset) && Address.isContract(askedAsset), "NimbusP2P_V2: Not contracts");
+        require(AddressUpgradeable.isContract(proposedAsset) && AddressUpgradeable.isContract(askedAsset), "NimbusP2P_V2: Not contracts");
          require(IEIP20(proposedAsset).decimals() >= 0, "NimbusP2P_V2: Propossed asset is not an EIP20 token" );
         require(IEIP20(askedAsset).decimals() >= 0, "NimbusP2P_V2: Asked asset is not an EIP20 token" );
         require(proposedAmount > 0, "NimbusP2P_V2: Zero amount not allowed");
@@ -317,7 +164,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     // for trade EIP20 -> Native Coin use createTradeEIP20ToEIP20 and pass WBNB address as asked asset
     function createTradeBNBtoEIP20(address askedAsset, uint askedAmount, uint deadline) payable external returns (uint tradeId) {
-        require(Address.isContract(askedAsset), "NimbusP2P_V2: Not contract");
+        require(AddressUpgradeable.isContract(askedAsset), "NimbusP2P_V2: Not contract");
         require(msg.value > 0, "NimbusP2P_V2: Zero amount not allowed");
         _requireAllowedEIP20(askedAsset);
         WBNB.deposit{value: msg.value}();
@@ -327,7 +174,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
 
     function createTradeEIP20ToNFT(address proposedAsset, uint proposedAmount, address askedAsset, uint tokenId, uint deadline) external returns (uint tradeId) {
-        require(Address.isContract(proposedAsset), "NimbusP2P_V2: Not contracts");
+        require(AddressUpgradeable.isContract(proposedAsset), "NimbusP2P_V2: Not contracts");
         require(proposedAmount > 0, "NimbusP2P_V2: Zero amount not allowed");
         _requireAllowedEIP20(proposedAsset);
         _requireAllowedNFT(askedAsset);
@@ -337,7 +184,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     // for trade NFT -> Native Coin use createTradeNFTtoEIP20 and pass WBNB address as asked asset
     function createTradeNFTtoEIP20(address proposedAsset, uint tokenId, address askedAsset, uint askedAmount, uint deadline) external returns (uint tradeId) {
-        require(Address.isContract(proposedAsset), "NimbusP2P_V2: Not contracts");
+        require(AddressUpgradeable.isContract(proposedAsset), "NimbusP2P_V2: Not contracts");
         _requireAllowedNFT(proposedAsset);
         _requireAllowedEIP20(askedAsset);
         IEIP721(proposedAsset).safeTransferFrom(msg.sender, address(this), tokenId);
@@ -345,7 +192,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
     }
 
     function createTradeBNBtoNFT(address askedAsset, uint tokenId, uint deadline) payable external returns (uint tradeId) {
-        require(Address.isContract(askedAsset), "NimbusP2P_V2: Not contract");
+        require(AddressUpgradeable.isContract(askedAsset), "NimbusP2P_V2: Not contract");
         require(msg.value > 0, "NimbusP2P_V2: Zero amount not allowed");
         _requireAllowedNFT(askedAsset);
         WBNB.deposit{value: msg.value}();
@@ -359,13 +206,13 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         uint[] memory askedTokenIds, 
         uint deadline
     ) external returns (uint tradeId) {
-        require(Address.isContract(proposedAsset), "NimbusP2P_V2: Not contracts");
+        require(AddressUpgradeable.isContract(proposedAsset), "NimbusP2P_V2: Not contracts");
         require(proposedAmount > 0, "NimbusP2P_V2: Zero amount not allowed");
         require(askedAssets.length > 0,"NimbusP2P_V2: askedAssets empty");
         require(askedAssets.length == askedTokenIds.length, "NimbusP2P_V2: Wrong lengths");
         _requireAllowedEIP20(proposedAsset);
         for (uint256 i; i < askedAssets.length; i++) {
-            require(Address.isContract(askedAssets[i]));
+            require(AddressUpgradeable.isContract(askedAssets[i]));
             _requireAllowedNFT(askedAssets[i]);
         }
         
@@ -385,12 +232,12 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         uint askedAmount, 
         uint deadline
     ) external returns (uint tradeId) {
-        require(Address.isContract(askedAsset), "NimbusP2P_V2: Not contracts");
+        require(AddressUpgradeable.isContract(askedAsset), "NimbusP2P_V2: Not contracts");
         require(proposedAssets.length == proposedTokenIds.length, "NimbusP2P_V2: Wrong lengths");
         require(proposedAssets.length > 0, "NimbusP2P_V2: proposedAssets empty");
         _requireAllowedEIP20(askedAsset);
         for (uint i; i < proposedAssets.length; i++) {
-          require(Address.isContract(proposedAssets[i]), "NimbusP2P_V2: Not contracts");
+          require(AddressUpgradeable.isContract(proposedAssets[i]), "NimbusP2P_V2: Not contracts");
           _requireAllowedNFT(proposedAssets[i]);
           IEIP721(proposedAssets[i]).safeTransferFrom(msg.sender, address(this), proposedTokenIds[i]);
         }
@@ -407,7 +254,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         require(msg.value > 0, "NimbusP2P_V2: Zero amount not allowed");
         require(askedAssets.length > 0,"NimbusP2P_V2: askedAssets empty!");
         for (uint i; i < askedAssets.length; i++) {
-          require(Address.isContract(askedAssets[i]), "NimbusP2P_V2: Not contracts");
+          require(AddressUpgradeable.isContract(askedAssets[i]), "NimbusP2P_V2: Not contracts");
             _requireAllowedNFT(askedAssets[i]);
         }
         require(msg.value > 0);
@@ -430,11 +277,11 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         require(proposedAssets.length == proposedTokenIds.length, "NimbusP2P_V2: AskedAssets wrong lengths");
         require(askedAssets.length == askedTokenIds.length, "NimbusP2P_V2: AskedAssets wrong lengths");
         for (uint i; i < askedAssets.length; i++) {
-          require(Address.isContract(askedAssets[i]), "NimbusP2P_V2: Not contracts");
+          require(AddressUpgradeable.isContract(askedAssets[i]), "NimbusP2P_V2: Not contracts");
         }
 
         for (uint i; i < proposedAssets.length; i++) {
-          require(Address.isContract(proposedAssets[i]), "NimbusP2P_V2: Not contracts");
+          require(AddressUpgradeable.isContract(proposedAssets[i]), "NimbusP2P_V2: Not contracts");
           IEIP721(proposedAssets[i]).safeTransferFrom(msg.sender, address(this), proposedTokenIds[i]);
         }        
         tradeId = _createTradeMulti(proposedAssets, 0, proposedTokenIds, askedAssets, 0, askedTokenIds, deadline, true);   
@@ -453,7 +300,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         bytes32 r, 
         bytes32 s
     ) external returns (uint tradeId) {
-        require(Address.isContract(proposedAsset) && Address.isContract(askedAsset), "NimbusP2P_V2: Not contracts");
+        require(AddressUpgradeable.isContract(proposedAsset) && AddressUpgradeable.isContract(askedAsset), "NimbusP2P_V2: Not contracts");
         require(proposedAmount > 0, "NimbusP2P_V2: Zero amount not allowed");
         _requireAllowedEIP20(askedAsset);
         _requireAllowedEIP20(proposedAsset);
@@ -473,7 +320,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         bytes32 r, 
         bytes32 s
     ) external returns (uint tradeId) {
-        require(Address.isContract(proposedAsset), "NimbusP2P_V2: Not contracts");
+        require(AddressUpgradeable.isContract(proposedAsset), "NimbusP2P_V2: Not contracts");
         require(proposedAmount > 0, "NimbusP2P_V2: Zero amount not allowed");
         _requireAllowedEIP20(proposedAsset);
         IEIP20Permit(proposedAsset).permit(msg.sender, address(this), proposedAmount, permitDeadline, v, r, s);
@@ -492,7 +339,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         bytes32 r, 
         bytes32 s
     ) external returns (uint tradeId) {
-        require(Address.isContract(proposedAsset), "NimbusP2P_V2: Not contracts");
+        require(AddressUpgradeable.isContract(proposedAsset), "NimbusP2P_V2: Not contracts");
         require(proposedAmount > 0, "NimbusP2P_V2: Zero amount not allowed");
         require(askedAssets.length == askedTokenIds.length, "NimbusP2P_V2: Wrong lengths");
         _requireAllowedEIP20(proposedAsset);
@@ -793,7 +640,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
     }
 
     function updateAllowedNFT(address nft, bool isAllowed) external onlyOwner {
-        require(Address.isContract(nft), "NimbusP2P_V2: Not a contract");
+        require(AddressUpgradeable.isContract(nft), "NimbusP2P_V2: Not a contract");
         allowedNFT[nft] = isAllowed;
         emit UpdateAllowedNFT(nft, isAllowed);
     }
@@ -804,7 +651,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
     }
 
     function updateAllowedEIP20Tokens(address token, bool isAllowed) external onlyOwner {
-        require(Address.isContract(token), "NimbusP2P_V2: Not a contract");
+        require(AddressUpgradeable.isContract(token), "NimbusP2P_V2: Not a contract");
         allowedEIP20[token] = isAllowed;
         emit UpdateAllowedEIP20Tokens(token, isAllowed);
     }
@@ -831,4 +678,4 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         to.transfer(amount);
         emit Rescue(to, amount);
     }
- }
+}

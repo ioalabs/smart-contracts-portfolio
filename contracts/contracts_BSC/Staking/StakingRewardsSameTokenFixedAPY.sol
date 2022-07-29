@@ -33,10 +33,27 @@ contract StakingRewardsSameTokenFixedAPY is IStakingRewards, ReentrancyGuard, Ow
     uint256 public rewardRate; 
     uint256 public constant rewardDuration = 365 days; 
 
-    mapping(address => uint256) public weightedStakeDate;
 
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
+
+    uint256 public rateChangesNonce;
+    mapping(address => uint256) public weightedStakeDate;
+    mapping(address => mapping(uint256 => StakeNonceInfo)) public stakeNonceInfos;
+    mapping(address => uint256) public stakeNonces;
+    mapping(uint256 => APYCheckpoint) APYcheckpoints;
+
+    struct StakeNonceInfo {
+        uint256 stakeTime;
+        uint256 tokenAmount;
+        uint256 rewardRate;
+    }
+
+    struct APYCheckpoint {
+        uint256 timestamp;
+        uint256 rewardRate;
+    }
+
 
     event RewardUpdated(uint256 reward);
     event Staked(address indexed user, uint256 amount);
@@ -44,6 +61,8 @@ contract StakingRewardsSameTokenFixedAPY is IStakingRewards, ReentrancyGuard, Ow
     event RewardPaid(address indexed user, uint256 reward);
     event Rescue(address indexed to, uint amount);
     event RescueToken(address indexed to, address indexed token, uint amount);
+    event RewardRateUpdated(uint256 indexed rateChangesNonce, uint256 rewardRate, uint256 timestamp);
+
 
     constructor(
         address _token,
@@ -53,6 +72,8 @@ contract StakingRewardsSameTokenFixedAPY is IStakingRewards, ReentrancyGuard, Ow
         token = IERC20(_token);
         stakingToken = IERC20(_token);
         rewardRate = _rewardRate;
+        emit RewardRateUpdated(rateChangesNonce, _rewardRate, block.timestamp);
+        APYcheckpoints[rateChangesNonce++] = APYCheckpoint(block.timestamp, rewardRate);
     }
 
     function totalSupply() external view override returns (uint256) {
@@ -63,8 +84,17 @@ contract StakingRewardsSameTokenFixedAPY is IStakingRewards, ReentrancyGuard, Ow
         return _balances[account];
     }
 
-    function earned(address account) public view override returns (uint256) {
-        return _balances[account] * (block.timestamp - weightedStakeDate[account]) * rewardRate / (100 * rewardDuration);
+
+    function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
+        return stakeNonceInfos[account][nonce].tokenAmount * 
+            (block.timestamp - stakeNonceInfos[account][nonce].stakeTime) *
+             stakeNonceInfos[account][nonce].rewardRate / (100 * rewardDuration);
+    }
+
+    function earned(address account) public view override returns (uint256 totalEarned) {
+        for (uint256 i = 0; i < stakeNonces[account]; i++) {
+            totalEarned += earnedByNonce(account, i);
+        }
     }
 
     function stakeWithPermit(uint256 amount, uint deadline, uint8 v, bytes32 r, bytes32 s) external nonReentrant {
@@ -76,7 +106,7 @@ contract StakingRewardsSameTokenFixedAPY is IStakingRewards, ReentrancyGuard, Ow
         _balances[msg.sender] = newAmount;
 
         // permit
-        IBEP20Permit(address(token)).permit(msg.sender, address(this), amount, deadline, v, r, s);
+        IERC20Permit(address(token)).permit(msg.sender, address(this), amount, deadline, v, r, s);
         
         token.safeTransferFrom(msg.sender, address(this), amount);
         emit Staked(msg.sender, amount);
@@ -84,12 +114,15 @@ contract StakingRewardsSameTokenFixedAPY is IStakingRewards, ReentrancyGuard, Ow
 
     function stake(uint256 amount) external override nonReentrant {
         require(amount > 0, "StakingRewardsSameTokenFixedAPY: Cannot stake 0");
-        _totalSupply += amount;
-        uint previousAmount = _balances[msg.sender];
-        uint newAmount = previousAmount + amount;
-        weightedStakeDate[msg.sender] = (weightedStakeDate[msg.sender] * previousAmount / newAmount) + (block.timestamp * amount / newAmount);
-        _balances[msg.sender] = newAmount;
         token.safeTransferFrom(msg.sender, address(this), amount);
+    
+        _totalSupply += amount;
+        _balances[msg.sender] += amount;
+
+        uint stakeNonce = stakeNonces[msg.sender]++;
+        stakeNonceInfos[msg.sender][stakeNonce].tokenAmount = amount;
+        stakeNonceInfos[msg.sender][stakeNonce].stakeTime = block.timestamp;
+        stakeNonceInfos[msg.sender][stakeNonce].rewardRate = rewardRate;
         emit Staked(msg.sender, amount);
     }
 
@@ -106,34 +139,48 @@ contract StakingRewardsSameTokenFixedAPY is IStakingRewards, ReentrancyGuard, Ow
     }
 
     //A user can withdraw its staking tokens even if there is no rewards tokens on the contract account
-    function withdraw(uint256 amount) public override nonReentrant {
-        require(amount > 0, "StakingRewardsSameTokenFixedAPY: Cannot withdraw 0");
+
+    function withdraw(uint256 nonce) public override nonReentrant whenNotPaused {
+        require(stakeNonceInfos[msg.sender][nonce].tokenAmount > 0, "StakingRewardsSameTokenFixedAPY: This stake nonce was withdrawn");
+        uint amount = stakeNonceInfos[msg.sender][nonce].tokenAmount;
         _totalSupply -= amount;
         _balances[msg.sender] -= amount;
-        token.safeTransfer(msg.sender, amount);
+        stakeNonceInfos[msg.sender][nonce].tokenAmount = 0;
+        stakingToken.safeTransfer(msg.sender, amount);
         emit Withdrawn(msg.sender, amount);
     }
 
-    function getReward() public override nonReentrant {
+    function getReward() public override nonReentrant whenNotPaused {
         uint256 reward = earned(msg.sender);
         if (reward > 0) {
-            weightedStakeDate[msg.sender] = block.timestamp;
+            for (uint256 i = 0; i < stakeNonces[msg.sender]; i++) {
+                stakeNonceInfos[msg.sender][i].stakeTime = block.timestamp;
+            }
             token.safeTransfer(msg.sender, reward);
             emit RewardPaid(msg.sender, reward);
         }
     }
 
-    function withdrawAndGetReward(uint256 amount) external override {
+    function withdrawAndGetReward(uint256 nonce) external override {
         getReward();
-        withdraw(amount);
+        withdraw(nonce);
     }
 
     function exit() external override {
         getReward();
-        withdraw(_balances[msg.sender]);
+        for (uint256 i = 0; i < stakeNonces[msg.sender]; i++) {
+            if (stakeNonceInfos[msg.sender][i].tokenAmount > 0) {
+                withdraw(i);
+            }
+        }
     }
 
-    function updateRewardAmount(uint256 reward) external onlyOwner {
+    function setPaused(bool _paused) external onlyOwner {
+        if (_paused) _pause();
+        else _unpause();
+    }
+
+    function updateRewardRate(uint256 reward) external onlyOwner {
         rewardRate = reward;
         emit RewardUpdated(reward);
     }
