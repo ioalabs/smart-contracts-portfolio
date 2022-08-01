@@ -1,54 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.15;
 
-contract Ownable {
-    address public owner;
-    address public newOwner;
-
-    event OwnershipTransferred(address indexed from, address indexed to);
-
-    constructor() {
-        owner = msg.sender;
-        emit OwnershipTransferred(address(0), owner);
-    }
-
-    modifier onlyOwner {
-        require(msg.sender == owner, "Ownable: Caller is not the owner");
-        _;
-    }
-
-    function getOwner() external view returns (address) {
-        return owner;
-    }
-
-    function transferOwnership(address transferOwner) external onlyOwner {
-        require(transferOwner != newOwner);
-        newOwner = transferOwner;
-    }
-
-    function acceptOwnership() virtual external {
-        require(msg.sender == newOwner);
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
-        newOwner = address(0);
-    }
-}
-
-interface IBEP20 {
-    event Approval(address indexed owner, address indexed spender, uint value);
-    event Transfer(address indexed from, address indexed to, uint value);
-
-    function name() external view returns (string memory);
-    function decimals() external view returns (uint8);
-    function symbol() external view returns (string memory);
-    function totalSupply() external view returns (uint);
-    function balanceOf(address owner) external view returns (uint);
-    function allowance(address owner, address spender) external view returns (uint);
-
-    function approve(address spender, uint value) external returns (bool);
-    function transfer(address to, uint value) external returns (bool);
-    function transferFrom(address from, address to, uint value) external returns (bool);
-}
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IStakingMain {
     function WBNB() external view returns(address);
@@ -66,7 +19,7 @@ interface IStakingSet {
 }
 
 contract HubRouting is Ownable {
-    address public StakingMain;
+    address immutable StakingMain;
     uint256 public stakingSetCount;
 
     mapping(uint256 => bool) public listActive;
@@ -88,9 +41,9 @@ contract HubRouting is Ownable {
 
     function stake(uint256 _setNum, uint256 _amount, uint _tokenId) external payable onlyStakingMain {
         require(listActive[_setNum], "StakingSet::not active");
+        smartByNFT[_tokenId] = listMap[_setNum];
         (bool success,) = listMap[_setNum].call{value: msg.value}(abi.encodeWithSignature("buyStakingSet(uint256,uint256)",_amount,_tokenId));
         require(success, "HubRouting::buySmartStaker failed");
-        smartByNFT[_tokenId] = listMap[_setNum];
     }
 
 

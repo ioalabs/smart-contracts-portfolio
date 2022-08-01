@@ -2,14 +2,11 @@
 pragma solidity 0.8.15;
 import './StakingSetStorage.sol';
 
-
 contract StakingSetBusd is StakingSetStorage {
     using AddressUpgradeable for address;
     using StringsUpgradeable for uint256;
     uint256 public constant MULTIPLIER = 1 ether;
     
-    address public target;
-
     function initialize(
         address _nimbusRouter, 
         address _pancakeRouter,
@@ -49,28 +46,28 @@ contract StakingSetBusd is StakingSetStorage {
         gnbuToken = IERC20Upgradeable(_gnbuToken);
         busdToken = IERC20Upgradeable(_busdToken);
         lpBnbCake = IlpBnbCake(_lpBnbCake);
-        NbuStaking = INbuStaking(_NbuStaking);
-        GnbuStaking = IGnbuStaking(_GnbuStaking);
+        NbuStaking = IStaking(_NbuStaking);
+        GnbuStaking = IStaking(_GnbuStaking);
         CakeStaking = IMasterChef(_CakeStaking);
         cakeToken = IERC20Upgradeable(CakeStaking.CAKE());
         purchaseToken = _busdToken;
         hubRouting = _hub;
 
-        minPurchaseAmount = 10 ether;
-        lockTime = 2 minutes;
-        cakePID = 4;
+        minPurchaseAmount = 500 ether;
+        lockTime = 30 days;
         POOLS_NUMBER = 3;
-        rewardDuration = INbuStaking(_NbuStaking).rewardDuration();
+        rewardDuration = IStaking(_NbuStaking).rewardDuration();
 
-        IERC20Upgradeable(_nbuToken).approve(_nimbusRouter, type(uint256).max);
-        IERC20Upgradeable(_gnbuToken).approve(_nimbusRouter, type(uint256).max);
-        IERC20Upgradeable(_nbuToken).approve(_NbuStaking, type(uint256).max);
-        IERC20Upgradeable(_gnbuToken).approve(_GnbuStaking, type(uint256).max);
-        IERC20Upgradeable(_busdToken).approve(_nimbusRouter, type(uint256).max);
+        require(IERC20Upgradeable(_nbuToken).approve(_nimbusRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
+        require(IERC20Upgradeable(_gnbuToken).approve(_nimbusRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
+        require(IERC20Upgradeable(_nbuToken).approve(_NbuStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
+        require(IERC20Upgradeable(_gnbuToken).approve(_GnbuStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
+        require(IERC20Upgradeable(_busdToken).approve(_nimbusRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
+        require(IERC20Upgradeable(_busdToken).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
 
-        IERC20Upgradeable(_lpBnbCake).approve(_CakeStaking, type(uint256).max);
-        IERC20Upgradeable(_lpBnbCake).approve(_pancakeRouter, type(uint256).max);
-        IERC20Upgradeable(CakeStaking.CAKE()).approve(_pancakeRouter, type(uint256).max);
+        require(IERC20Upgradeable(_lpBnbCake).approve(_CakeStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
+        require(IERC20Upgradeable(_lpBnbCake).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
+        require(IERC20Upgradeable(CakeStaking.CAKE()).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
     }
 
     receive() external payable {
@@ -89,68 +86,72 @@ contract StakingSetBusd is StakingSetStorage {
     // ========================== StakingSet functions ==========================
 
 
-    function buyStakingSet(uint256 amount, uint256 tokenId) external {
-      require(msg.sender == hubRouting, "StakingSet:: Caller is not the HubRouting contract");
+    function buyStakingSet(uint256 amount, uint256 tokenId) external onlyHub {
       require(amount >= minPurchaseAmount, "StakingSet: Token price is more than sent");
       providedAmount[tokenId] = amount;
+      emit BuyStakingSet(tokenId, purchaseToken, amount, block.timestamp);
 
       (uint256 nbuAmount,uint256 gnbuAmount,uint256 cakeLPamount) = makeSwaps(amount); 
 
-      NbuStaking.stake(nbuAmount);
+      uint256 nonceNbu = NbuStaking.stakeNonces(address(this));
       _balancesRewardEquivalentNbu[tokenId] += nbuAmount;
 
-      uint256 noncesGnbu = GnbuStaking.stakeNonces(address(this));
-      GnbuStaking.stake(gnbuAmount);
-      uint amountRewardEquivalentGnbu = GnbuStaking.getEquivalentAmount(gnbuAmount);
+     
+      uint256 nonceGnbu = GnbuStaking.stakeNonces(address(this));
+      uint256 amountRewardEquivalentGnbu = GnbuStaking.getEquivalentAmount(gnbuAmount);
       _balancesRewardEquivalentGnbu[tokenId] += amountRewardEquivalentGnbu;
 
       
       IMasterChef.UserInfo memory user = CakeStaking.userInfo(cakePID, address(this));
       uint oldCakeShares = user.amount;
 
-      CakeStaking.deposit(cakePID,cakeLPamount);
-      user = CakeStaking.userInfo(cakePID, address(this));
 
       UserSupply storage userSupply = tikSupplies[tokenId];
       userSupply.IsActive = true;
       userSupply.NbuStakingAmount = nbuAmount;
       userSupply.GnbuStakingAmount = gnbuAmount;
       userSupply.CakeBnbAmount = cakeLPamount;
-      userSupply.GnbuStakeNonce = noncesGnbu;
+      userSupply.NbuStakeNonce = nonceNbu;
+      userSupply.GnbuStakeNonce = nonceGnbu;
+      userSupply.SupplyTime = block.timestamp;
+      userSupply.TokenId = tokenId;
+
+      CakeStaking.deposit(cakePID,cakeLPamount);
+      user = CakeStaking.userInfo(cakePID, address(this));
       userSupply.CakeShares = user.amount - oldCakeShares;
       userSupply.CurrentCakeShares = user.amount;
       userSupply.CurrentRewardDebt = user.rewardDebt;
-      userSupply.SupplyTime = block.timestamp;
-      userSupply.TokenId = tokenId;
 
       weightedStakeDate[tokenId] = userSupply.SupplyTime;
       counter++;
 
-      emit BuyStakingSet(tokenId, purchaseToken, amount, userSupply.SupplyTime);
+      NbuStaking.stake(nbuAmount);
+      GnbuStaking.stake(gnbuAmount);
     }
 
     function makeSwaps(uint256 amount) private returns(uint256,uint256,uint256) {
+      uint256 swapDeadline = block.timestamp + 1200; // 20 mins
       address[] memory path = new address[](2);
       path[0] = address(busdToken);
-      path[1] = address(nimbusBNB);
-      (uint[] memory amountsBusdBnb) = nimbusRouter.swapExactTokensForBNB(amount, 0, path, address(this), block.timestamp);
+      path[1] = address(binanceBNB);
+      (uint[] memory amountsBusdBnb) = pancakeRouter.swapExactTokensForETH(amount, 0, path, address(this), swapDeadline);
       amount = amountsBusdBnb[1] * MULTIPLIER;
       
-      uint CakeEAmount = amount / 100 * 30;
+      uint CakeEAmount = amount * 30 / 100;
 
       path = new address[](2);
       path[0] = address(binanceBNB);
       path[1] = address(cakeToken);
-      (uint[] memory amountsBnbCakeSwap) = pancakeRouter.swapExactETHForTokens{value:  (CakeEAmount / 2) / MULTIPLIER }(0, path, address(this), block.timestamp);
-    (, uint amountBnbCake, uint liquidityBnbCake) = pancakeRouter.addLiquidityETH{value: (amount - CakeEAmount / 2) / MULTIPLIER }(address(cakeToken), amountsBnbCakeSwap[1], 0, 0, address(this), block.timestamp);
+      (uint[] memory amountsBnbCakeSwap) = pancakeRouter.swapExactETHForTokens{value:  (CakeEAmount / 2) / MULTIPLIER }(0, path, address(this), swapDeadline);
+    (, uint amountBnbCake, uint liquidityBnbCake) = pancakeRouter.addLiquidityETH{value: (amount - CakeEAmount / 2) / MULTIPLIER }(address(cakeToken), amountsBnbCakeSwap[1], 0, 0, address(this), swapDeadline);
       uint NbuAmount = ((amount - MULTIPLIER * amountBnbCake - CakeEAmount/ 2 ) / 2) / MULTIPLIER;
       
       path[0] = address(nimbusBNB);
       path[1] = address(nbuToken);
-      (uint[] memory amountsBnbNbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), block.timestamp);
+      (uint[] memory amountsBnbNbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), swapDeadline);
 
       path[1] = address(gnbuToken);      
-      (uint[] memory amountsBnbGnbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), block.timestamp);
+      (uint[] memory amountsBnbGnbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), swapDeadline);
       
       return (amountsBnbNbuStaking[1], amountsBnbGnbuStaking[1], liquidityBnbCake);
     }
@@ -188,43 +189,36 @@ contract StakingSetBusd is StakingSetStorage {
         burnTime = tikSupplies[tokenId].BurnTime;
     }  
 
-    function withdrawUserRewards(uint tokenId, address tokenOwner) external nonReentrant {
-        require(msg.sender == hubRouting, "StakingSet:: Caller is not the HubRouting contract");
+    function withdrawUserRewards(uint tokenId, address tokenOwner) external nonReentrant onlyHub {
         UserSupply memory userSupply = tikSupplies[tokenId];
         require(userSupply.IsActive, "StakingSet: Not active");
         (uint256 nbuReward, uint256 cakeReward) = getTotalAmountsOfRewards(tokenId);
         _withdrawUserRewards(tokenId, tokenOwner, nbuReward, cakeReward);
     }
     
-    function burnStakingSet(uint tokenId, address tokenOwner) external nonReentrant {
-        require(msg.sender == hubRouting, "StakingSet:: Caller is not the HubRouting contract");
+    function burnStakingSet(uint tokenId, address tokenOwner) external nonReentrant onlyHub {
         UserSupply storage userSupply = tikSupplies[tokenId];
         require(block.timestamp > userSupply.SupplyTime + lockTime, "StakingSet:: NFT is locked");
         require(userSupply.IsActive, "StakingSet: Token not active");
+
         (uint256 nbuReward, uint256 cakeReward) = getTotalAmountsOfRewards(tokenId);
-        
+        userSupply.IsActive = false;
+        userSupply.BurnTime = block.timestamp;
+
+        emit BurnStakingSet(tokenId, userSupply.NbuStakingAmount, userSupply.GnbuStakingAmount, userSupply.CakeBnbAmount);     
+
         if(nbuReward > 0) {
             _withdrawUserRewards(tokenId, tokenOwner, nbuReward, cakeReward);
         }
 
-
-        NbuStaking.withdraw(userSupply.NbuStakingAmount);
+        NbuStaking.withdraw(userSupply.NbuStakeNonce);
         GnbuStaking.withdraw(userSupply.GnbuStakeNonce);
         CakeStaking.withdraw(cakePID, userSupply.CakeBnbAmount);
 
         TransferHelper.safeTransfer(address(nbuToken), tokenOwner, userSupply.NbuStakingAmount);
         TransferHelper.safeTransfer(address(gnbuToken), tokenOwner, userSupply.GnbuStakingAmount);
         pancakeRouter.removeLiquidityETH(address(cakeToken), userSupply.CakeBnbAmount, 0, 0, tokenOwner, block.timestamp);
-        
-        userSupply.IsActive = false;
-        userSupply.BurnTime = block.timestamp;
-     
-        emit BurnStakingSet(tokenId, userSupply.NbuStakingAmount, userSupply.GnbuStakingAmount, userSupply.CakeBnbAmount);     
     }
-
-   
-
-
 
     function getTokenRewardsAmounts(uint tokenId) public view returns (uint256 NbuUserRewards, uint256 GnbuUserRewards, uint256 CakeUserRewards) {
         UserSupply memory userSupply = tikSupplies[tokenId];
@@ -267,15 +261,15 @@ contract StakingSetBusd is StakingSetStorage {
 
     function _withdrawUserRewards(uint256 tokenId, address tokenOwner, uint256 totalNbuReward, uint256 totalCakeReward) private {
         require(totalNbuReward > 0 || totalCakeReward > 0, "StakingSet: Claim not enough");
+        emit WithdrawRewards(tokenOwner, tokenId, totalNbuReward, totalCakeReward);
 
         if (nbuToken.balanceOf(address(this)) < totalNbuReward) {
+            emit BalanceNBURewardsNotEnough(tokenOwner, tokenId, totalNbuReward);
             NbuStaking.getReward();
             GnbuStaking.getReward();
-
-            emit BalanceNBURewardsNotEnough(tokenOwner, tokenId, totalNbuReward);
         }
 
-        require(nbuToken.balanceOf(address(this)) > totalNbuReward, "StakingSet :: Not enough funds on contract to pay off claim");
+        require(nbuToken.balanceOf(address(this)) >= totalNbuReward, "StakingSet :: Not enough funds on contract to pay off claim");
         TransferHelper.safeTransfer(address(nbuToken), tokenOwner, totalNbuReward);
         weightedStakeDate[tokenId] = block.timestamp;
 
@@ -285,8 +279,6 @@ contract StakingSetBusd is StakingSetStorage {
         tikSupplies[tokenId].CurrentCakeShares = user.amount;
 
         TransferHelper.safeTransfer(address(cakeToken), tokenOwner, totalCakeReward);
-
-        emit WithdrawRewards(tokenOwner, tokenId, totalNbuReward, totalCakeReward);
     }
 
     // ========================== Owner functions ==========================
@@ -307,16 +299,16 @@ contract StakingSetBusd is StakingSetStorage {
         require(to != address(0), "StakingSet: Cannot rescue to the zero address");
         require(amount > 0, "StakingSet: Cannot rescue 0");
 
-        IERC20Upgradeable(tokenAddress).transfer(to, amount);
         emit RescueToken(to, address(tokenAddress), amount);
+        require(IERC20Upgradeable(tokenAddress).transfer(to, amount), "IERC20Upgradeable: TRANSFER_FAILED");
     }
 
     function rescue(address payable to, uint256 amount) external onlyOwner {
         require(to != address(0), "StakingSet: Cannot rescue to the zero address");
         require(amount > 0, "StakingSet: Cannot rescue 0");
 
-        to.transfer(amount);
         emit Rescue(to, amount);
+        to.transfer(amount);
     }
 
     function updateNimbusRouter(address newNimbusRouter) external onlyOwner {
@@ -327,13 +319,13 @@ contract StakingSetBusd is StakingSetStorage {
     
     function updateNbuStaking(address newLpStaking) external onlyOwner {
         require(AddressUpgradeable.isContract(newLpStaking), "StakingSet: Not a contract");
-        NbuStaking = INbuStaking(newLpStaking);
+        NbuStaking = IStaking(newLpStaking);
         emit UpdateNbuStaking(newLpStaking);
     }
     
     function updateGnbuStaking(address newLpStaking) external onlyOwner {
         require(AddressUpgradeable.isContract(newLpStaking), "StakingSet: Not a contract");
-        GnbuStaking = IGnbuStaking(newLpStaking);
+        GnbuStaking = IStaking(newLpStaking);
         emit UpdateGnbuStaking(newLpStaking);
     }
     

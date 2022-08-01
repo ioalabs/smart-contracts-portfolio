@@ -6,7 +6,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 library TransferHelper {
@@ -107,23 +107,18 @@ interface IPancakeRouter {
         address to,
         uint deadline
     ) external returns (uint amountToken, uint amountBNB);
+    function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
+        external
+        returns (uint[] memory amounts);
 }
 
-interface INbuStaking {
-    function stake(uint256 amount) external;
-    function stakeFor(uint256 amount, address user) external;
-    function getReward() external;
-    function withdraw(uint256 amount) external;
-    function rewardDuration() external returns (uint256);
-}
-
-interface IGnbuStaking {
+interface IStaking {
     function stake(uint256 amount) external;
     function stakeNonces (address) external view returns (uint256);
     function stakeFor(uint256 amount, address user) external;
     function getEquivalentAmount(uint amount) external view returns (uint);
     function getReward() external;
-    function withdraw(uint256 amount) external;
+    function withdraw(uint256 nonce) external;
     function rewardDuration() external returns (uint256);
 }
 
@@ -165,12 +160,13 @@ interface IMasterChef {
 }
 
 contract StakingSetStorage is ContextUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, ERC165 {    
+    using SafeERC20Upgradeable for IERC20Upgradeable;
     IWBNB public nimbusBNB;
     IWBNB public binanceBNB;
     IRouter public nimbusRouter;
     IPancakeRouter public pancakeRouter;
-    INbuStaking public NbuStaking;
-    IGnbuStaking public GnbuStaking;
+    IStaking public NbuStaking;
+    IStaking public GnbuStaking;
     IMasterChef public CakeStaking;
     IlpBnbCake public lpBnbCake;
     IERC20Upgradeable public nbuToken;
@@ -203,6 +199,7 @@ contract StakingSetStorage is ContextUpgradeable, OwnableUpgradeable, Reentrancy
       uint CakeShares;
       uint CurrentRewardDebt;
       uint CurrentCakeShares;
+      uint NbuStakeNonce;
       uint GnbuStakeNonce;
       uint SupplyTime;
       uint BurnTime;
@@ -211,10 +208,8 @@ contract StakingSetStorage is ContextUpgradeable, OwnableUpgradeable, Reentrancy
     }
 
     
-    mapping(uint => uint[]) internal _userRewards;
     mapping(uint => uint256) internal _balancesRewardEquivalentNbu;
     mapping(uint => uint256) internal _balancesRewardEquivalentGnbu;
-    mapping(uint => uint256) internal _balancesRewardEquivalentCake;
     mapping(uint => UserSupply) public tikSupplies;
     mapping(uint => uint256) public weightedStakeDate;
 
