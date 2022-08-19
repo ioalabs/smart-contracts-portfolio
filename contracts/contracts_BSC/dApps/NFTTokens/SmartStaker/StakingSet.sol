@@ -85,67 +85,78 @@ contract StakingSet is StakingSetStorage {
 
 
     function buyStakingSet(uint256 amount, uint256 tokenId) payable external onlyHub {
-      require(msg.value >= minPurchaseAmount, "StakingSet: Token price is more than sent");
-      uint amountBNB = msg.value;
-      providedAmount[tokenId] = msg.value;
-      emit BuyStakingSet(tokenId, purchaseToken, amountBNB, block.timestamp);
+        require(msg.value >= minPurchaseAmount, "StakingSet: Token price is more than sent");
+        uint amountBNB = msg.value;
+        providedAmount[tokenId] = msg.value;
+        emit BuyStakingSet(tokenId, purchaseToken, amountBNB, block.timestamp);
 
-      (uint256 nbuAmount,uint256 gnbuAmount,uint256 cakeLPamount) = makeSwaps(amountBNB); 
+        (uint256 nbuAmount,uint256 gnbuAmount,uint256 cakeLPamount) = makeSwaps(amountBNB); 
 
-      uint256 nonceNbu = NbuStaking.stakeNonces(address(this));
-      _balancesRewardEquivalentNbu[tokenId] += nbuAmount;
+        uint256 nonceNbu = NbuStaking.stakeNonces(address(this));
+        _balancesRewardEquivalentNbu[tokenId] += nbuAmount;
 
      
-      uint256 nonceGnbu = GnbuStaking.stakeNonces(address(this));
-      uint256 amountRewardEquivalentGnbu = GnbuStaking.getEquivalentAmount(gnbuAmount);
-      _balancesRewardEquivalentGnbu[tokenId] += amountRewardEquivalentGnbu;      
+        uint256 nonceGnbu = GnbuStaking.stakeNonces(address(this));
+        uint256 amountRewardEquivalentGnbu = GnbuStaking.getEquivalentAmount(gnbuAmount);
+        _balancesRewardEquivalentGnbu[tokenId] += amountRewardEquivalentGnbu;      
 
-      IMasterChef.UserInfo memory user = CakeStaking.userInfo(cakePID, address(this));
-      uint256 oldCakeShares = user.amount;
+        IMasterChef.UserInfo memory user = CakeStaking.userInfo(cakePID, address(this));
+        uint256 oldCakeShares = user.amount;
 
-      UserSupply storage userSupply = tikSupplies[tokenId];
-      userSupply.IsActive = true;
-      userSupply.NbuStakingAmount = nbuAmount;
-      userSupply.GnbuStakingAmount = gnbuAmount;
-      userSupply.CakeBnbAmount = cakeLPamount;
-      userSupply.NbuStakeNonce = nonceNbu;
-      userSupply.GnbuStakeNonce = nonceGnbu;
-      userSupply.SupplyTime = block.timestamp;
-      userSupply.TokenId = tokenId;
+        UserSupply storage userSupply = tikSupplies[tokenId];
+        userSupply.IsActive = true;
+        userSupply.NbuStakingAmount = nbuAmount;
+        userSupply.GnbuStakingAmount = gnbuAmount;
+        userSupply.CakeBnbAmount = cakeLPamount;
+        userSupply.NbuStakeNonce = nonceNbu;
+        userSupply.GnbuStakeNonce = nonceGnbu;
+        userSupply.SupplyTime = block.timestamp;
+        userSupply.TokenId = tokenId;
 
-      CakeStaking.deposit(cakePID,cakeLPamount);
-      user = CakeStaking.userInfo(cakePID, address(this));
-      userSupply.CakeShares = user.amount - oldCakeShares;
-      userSupply.CurrentCakeShares = user.amount;
-      userSupply.CurrentRewardDebt = user.rewardDebt;
+        uint lpBalanceOld = lpBnbCake.balanceOf(address(this));
+        CakeStaking.deposit(cakePID,cakeLPamount);
+        uint lpBalanceNew = lpBnbCake.balanceOf(address(this));
+        require(lpBalanceNew - cakeLPamount == lpBalanceOld, "StakingSet: Cake/BNB LP staking deposit is unsuccessful");
+
+        user = CakeStaking.userInfo(cakePID, address(this));
+        userSupply.CakeShares = user.amount - oldCakeShares;
+        userSupply.CurrentCakeShares = user.amount;
+        userSupply.CurrentRewardDebt = user.rewardDebt;
       
-      weightedStakeDate[tokenId] = userSupply.SupplyTime;
-      counter++;
-      
-      NbuStaking.stake(nbuAmount);
-      GnbuStaking.stake(gnbuAmount);
+        weightedStakeDate[tokenId] = userSupply.SupplyTime;
+        counter++;
+
+        uint256 oldBalanceNbu = NbuStaking.balanceOf(address(this));
+        NbuStaking.stake(nbuAmount);
+        uint256 newBalanceNbu = NbuStaking.balanceOf(address(this));
+        require(newBalanceNbu - nbuAmount == oldBalanceNbu, "StakingSet: NBU staking deposit is unsuccessful");
+        
+        uint256 oldBalanceGnbu = GnbuStaking.balanceOf(address(this));
+        GnbuStaking.stake(gnbuAmount);
+        uint256 newBalanceGnbu = GnbuStaking.balanceOf(address(this));
+        require(newBalanceGnbu - gnbuAmount == oldBalanceGnbu, "StakingSet: GNBU staking deposit is unsuccessful");
     }
 
     function makeSwaps(uint256 amount) private returns(uint256,uint256,uint256) {
-      uint256 swapDeadline = block.timestamp + 1200; // 20 mins
-      amount *= MULTIPLIER;
-      uint CakeEAmount = amount * 30 / 100;
+        uint256 swapDeadline = block.timestamp + 1200; // 20 mins
+        amount *= MULTIPLIER;
+        uint CakeEAmount = amount * 30 / 100;
 
-      address[] memory path = new address[](2);
-      path[0] = address(binanceBNB);
-      path[1] = address(cakeToken);
-      (uint[] memory amountsBnbCakeSwap) = pancakeRouter.swapExactETHForTokens{value:  (CakeEAmount / 2) / MULTIPLIER }(0, path, address(this), swapDeadline);
-    (, uint amountBnbCake, uint liquidityBnbCake) = pancakeRouter.addLiquidityETH{value: (amount - CakeEAmount / 2) / MULTIPLIER }(address(cakeToken), amountsBnbCakeSwap[1], 0, 0, address(this), swapDeadline);
-      uint NbuAmount = ((amount - MULTIPLIER * amountBnbCake - CakeEAmount/ 2 ) / 2) / MULTIPLIER;
+        address[] memory path = new address[](2);
+        path[0] = address(binanceBNB);
+        path[1] = address(cakeToken);
+        (uint[] memory amountsBnbCakeSwap) = pancakeRouter.swapExactETHForTokens{value:  (CakeEAmount / 2) / MULTIPLIER }(0, path, address(this), swapDeadline);
+        (, uint amountBnbCake, uint liquidityBnbCake) = pancakeRouter.addLiquidityETH{value: (amount - CakeEAmount / 2) / MULTIPLIER }(address(cakeToken), amountsBnbCakeSwap[1], 0, 0, address(this), swapDeadline);
+        uint NbuAmount = ((amount - MULTIPLIER * amountBnbCake - CakeEAmount/ 2 ) / 2) / MULTIPLIER;
       
-      path[0] = address(nimbusBNB);
-      path[1] = address(nbuToken);
-      (uint[] memory amountsBnbNbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), swapDeadline);
+        path[0] = address(nimbusBNB);
+        path[1] = address(nbuToken);
+        (uint[] memory amountsBnbNbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), swapDeadline);
 
-      path[1] = address(gnbuToken);      
-      (uint[] memory amountsBnbGnbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), swapDeadline);
+        path[1] = address(gnbuToken);      
+        (uint[] memory amountsBnbGnbuStaking) = nimbusRouter.swapExactBNBForTokens{value: NbuAmount}(0, path, address(this), swapDeadline);
       
-      return (amountsBnbNbuStaking[1], amountsBnbGnbuStaking[1], liquidityBnbCake);
+        return (amountsBnbNbuStaking[1], amountsBnbGnbuStaking[1], liquidityBnbCake);
     }
 
     function getNFTfields(uint tokenId, uint NFTFieldIndex) 

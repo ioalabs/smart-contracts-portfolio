@@ -117,6 +117,7 @@ interface IStaking {
     function stakeNonces (address) external view returns (uint256);
     function stakeFor(uint256 amount, address user) external;
     function getEquivalentAmount(uint amount) external view returns (uint);
+    function balanceOf(address account) external view returns (uint256);
     function getReward() external;
     function withdraw(uint256 nonce) external;
     function rewardDuration() external returns (uint256);
@@ -131,6 +132,7 @@ interface IWBNB {
 
 interface IlpBnbCake {
     function approve(address spender, uint value) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
 }
 
 interface IMasterChef {
