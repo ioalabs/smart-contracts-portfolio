@@ -113,9 +113,9 @@ contract StakingSet is StakingSetStorage {
         userSupply.SupplyTime = block.timestamp;
         userSupply.TokenId = tokenId;
 
-        uint lpBalanceOld = lpBnbCake.balanceOf(address(this));
+        uint lpBalanceOld = lpBnbCake.balanceOf(address(CakeStaking));
         CakeStaking.deposit(cakePID,cakeLPamount);
-        uint lpBalanceNew = lpBnbCake.balanceOf(address(this));
+        uint lpBalanceNew = lpBnbCake.balanceOf(address(CakeStaking));
         require(lpBalanceNew - cakeLPamount == lpBalanceOld, "StakingSet: Cake/BNB LP staking deposit is unsuccessful");
 
         user = CakeStaking.userInfo(cakePID, address(this));
