@@ -1,15 +1,12 @@
-pragma solidity ^0.8.0;
+pragma solidity =0.8.0;
 
-interface IBEP20 {
+interface IERC20 {
     function totalSupply() external view returns (uint256);
-    function decimals() external view returns (uint8);
     function balanceOf(address account) external view returns (uint256);
     function transfer(address recipient, uint256 amount) external returns (bool);
     function allowance(address owner, address spender) external view returns (uint256);
     function approve(address spender, uint256 amount) external returns (bool);
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function getOwner() external view returns (address);
-    
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
@@ -32,10 +29,6 @@ contract Ownable {
     modifier onlyOwner {
         require(msg.sender == owner, "Ownable: Caller is not the owner");
         _;
-    }
-
-    function getOwner() external view returns (address) {
-        return owner;
     }
 
     function transferOwnership(address transferOwner) external onlyOwner {
@@ -63,42 +56,42 @@ library Address {
     }
 }
 
-library SafeBEP20 {
+library SafeERC20 {
     using Address for address;
 
-    function safeTransfer(IBEP20 token, address to, uint256 value) internal {
+    function safeTransfer(IERC20 token, address to, uint256 value) internal {
         callOptionalReturn(token, abi.encodeWithSelector(token.transfer.selector, to, value));
     }
 
-    function safeTransferFrom(IBEP20 token, address from, address to, uint256 value) internal {
+    function safeTransferFrom(IERC20 token, address from, address to, uint256 value) internal {
         callOptionalReturn(token, abi.encodeWithSelector(token.transferFrom.selector, from, to, value));
     }
 
-    function safeApprove(IBEP20 token, address spender, uint256 value) internal {
+    function safeApprove(IERC20 token, address spender, uint256 value) internal {
         require((value == 0) || (token.allowance(address(this), spender) == 0),
-            "SafeBEP20: approve from non-zero to non-zero allowance"
+            "SafeERC20: approve from non-zero to non-zero allowance"
         );
         callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, value));
     }
 
-    function safeIncreaseAllowance(IBEP20 token, address spender, uint256 value) internal {
+    function safeIncreaseAllowance(IERC20 token, address spender, uint256 value) internal {
         uint256 newAllowance = token.allowance(address(this), spender) + value;
         callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
     }
 
-    function safeDecreaseAllowance(IBEP20 token, address spender, uint256 value) internal {
+    function safeDecreaseAllowance(IERC20 token, address spender, uint256 value) internal {
         uint256 newAllowance = token.allowance(address(this), spender) - value;
         callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
     }
 
-    function callOptionalReturn(IBEP20 token, bytes memory data) private {
-        require(address(token).isContract(), "SafeBEP20: call to non-contract");
+    function callOptionalReturn(IERC20 token, bytes memory data) private {
+        require(address(token).isContract(), "SafeERC20: call to non-contract");
 
         (bool success, bytes memory returndata) = address(token).call(data);
-        require(success, "SafeBEP20: low-level call failed");
+        require(success, "SafeERC20: low-level call failed");
 
         if (returndata.length > 0) { 
-            require(abi.decode(returndata, (bool)), "SafeBEP20: BEP20 operation did not succeed");
+            require(abi.decode(returndata, (bool)), "SafeERC20: ERC20 operation did not succeed");
         }
     }
 }
@@ -206,6 +199,7 @@ abstract contract Pausable {
     }
 }
 
+
 interface ILockStakingRewards {
     function earned(address account) external view returns (uint256);
     function totalSupply() external view returns (uint256);
@@ -213,40 +207,40 @@ interface ILockStakingRewards {
     function stake(uint256 amount) external;
     function stakeFor(uint256 amount, address user) external;
     function getReward() external;
-    function getRewardForUser(address user) external;
     function withdraw(uint256 nonce) external;
     function withdrawAndGetReward(uint256 nonce) external;
 }
 
+interface IERC20Permit {
+    function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
+}
 interface IPriceFeed {
     function queryRate(address sourceTokenAddress, address destTokenAddress) external view returns (uint256 rate, uint256 precision);
     function wbnbToken() external view returns(address);
 }
-
-interface IBEP20Permit {
-    function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
-}
-
 contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGuard, Ownable, Pausable {
-    using SafeBEP20 for IBEP20;
+    using SafeERC20 for IERC20;
 
-    IBEP20 public immutable rewardsToken;
-    IBEP20 public immutable stakingToken;
-    INimbusRouter public swapRouter;
+    IERC20 public immutable rewardsToken;
+    IERC20 public immutable stakingToken;
     uint256 public rewardRate; 
     uint256 public immutable lockDuration; 
     uint256 public constant rewardDuration = 365 days; 
     uint256 public rateChangesNonce;
 
+    INimbusRouter public swapRouter;
     address public swapToken;                       
     uint public swapTokenAmountThresholdForStaking;
 
     mapping(address => uint256) public weightedStakeDate;
     mapping(address => mapping(uint256 => StakeNonceInfo)) public stakeNonceInfos;
+    mapping(address => mapping(uint256 => uint256)) public stakeLocks;
+    mapping(address => mapping(uint256 => uint256)) public stakeAmounts;
+    mapping(address => mapping(uint256 => uint256)) public stakeAmountsRewardEquivalent;
     mapping(address => uint256) public stakeNonces;
     mapping(uint256 => APYCheckpoint) APYcheckpoints;
 
-    struct StakeNonceInfo {
+      struct StakeNonceInfo {
         uint256 unlockTime;
         uint256 stakeTime;
         uint256 stakingTokenAmount;
@@ -254,7 +248,7 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         uint256 rewardRate;
     }
 
-    struct APYCheckpoint {
+      struct APYCheckpoint {
         uint256 timestamp;
         uint256 rewardRate;
     }
@@ -263,38 +257,36 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
     uint256 private _totalSupplyRewardEquivalent;
     mapping(address => uint256) private _balances;
     mapping(address => uint256) private _balancesRewardEquivalent;
-
     bool public usePriceFeeds;
     IPriceFeed public priceFeed;
-
-    event RewardRateUpdated(uint256 indexed rateChangesNonce, uint256 rewardRate, uint256 timestamp);
+   
+    event RewardUpdated(uint256 reward);
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
     event Rescue(address indexed to, uint amount);
     event RescueToken(address indexed to, address indexed token, uint amount);
-
-    event ToggleUsePriceFeeds(bool indexed usePriceFeeds);
+    event RewardRateUpdated(uint256 indexed rateChangesNonce, uint256 rewardRate, uint256 timestamp);
+    
+    event ToggleUsePriceFeeds(bool indexed usePriceFeeds); 
 
     constructor(
         address _rewardsToken,
         address _stakingToken,
+        uint _rewardRate,
+        uint _lockDuration,
         address _swapRouter,
         address _swapToken,
-        uint _swapTokenAmount,
-        uint _rewardRate,
-        uint _lockDuration
+        uint _swapTokenAmount
     ) {
-        require(_rewardsToken != address(0) && _swapRouter != address(0) && _swapToken != address(0), "LockStakingRewardMinAmountFixedAPY: Zero address(es)");
-        rewardsToken = IBEP20(_rewardsToken);
-        stakingToken = IBEP20(_stakingToken);
-        swapRouter = INimbusRouter(_swapRouter);
+        rewardsToken = IERC20(_rewardsToken);
+        stakingToken = IERC20(_stakingToken);
         rewardRate = _rewardRate;
         lockDuration = _lockDuration;
+        swapRouter = INimbusRouter(_swapRouter);
         swapToken = _swapToken;
         swapTokenAmountThresholdForStaking = _swapTokenAmount;
-        emit RewardRateUpdated(rateChangesNonce, _rewardRate, block.timestamp);
-        APYcheckpoints[rateChangesNonce++] = APYCheckpoint(block.timestamp, rewardRate);
+        
     }
 
     function totalSupply() external view override returns (uint256) {
@@ -313,7 +305,8 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         return _balancesRewardEquivalent[account];
     }
 
-    function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
+ 
+  function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
         return stakeNonceInfos[account][nonce].rewardsTokenAmount * 
             (block.timestamp - stakeNonceInfos[account][nonce].stakeTime) *
              stakeNonceInfos[account][nonce].rewardRate / (100 * rewardDuration);
@@ -325,10 +318,18 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         }
     }
 
+    function isAmountMeetsMinThreshold(uint amount) public view returns (bool) {
+        address[] memory path = new address[](2);
+        path[0] = address(stakingToken);
+        path[1] = swapToken;
+        uint tokenAmount = swapRouter.getAmountsOut(amount, path)[1];
+        return tokenAmount >= swapTokenAmountThresholdForStaking;
+    }
+
     function stakeWithPermit(uint256 amount, uint deadline, uint8 v, bytes32 r, bytes32 s) external nonReentrant {
         require(amount > 0, "LockStakingRewardMinAmountFixedAPY: Cannot stake 0");
         // permit
-        IBEP20Permit(address(stakingToken)).permit(msg.sender, address(this), amount, deadline, v, r, s);
+        IERC20Permit(address(stakingToken)).permit(msg.sender, address(this), amount, deadline, v, r, s);
         _stake(amount, msg.sender);
     }
 
@@ -347,7 +348,6 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         require(isAmountMeetsMinThreshold(amount), "LockStakingRewardMinAmountFixedAPY: Amount is less than min stake");
         stakingToken.safeTransferFrom(msg.sender, address(this), amount);
         uint amountRewardEquivalent = getEquivalentAmount(amount);
-
         _totalSupply += amount;
         _totalSupplyRewardEquivalent += amountRewardEquivalent;
         _balances[user] += amount;
@@ -362,57 +362,29 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         emit Staked(user, amount);
     }
 
-    function isAmountMeetsMinThreshold(uint amount) public view returns (bool) {
-        uint tokenAmount;
-        if (usePriceFeeds && address(priceFeed) != address(0)) {
-            (uint256 rate, uint256 precision) = priceFeed.queryRate(address(stakingToken), address(swapToken));
-            tokenAmount = amount * rate / precision;
-        } else {
-            address[] memory path = new address[](2);
-            path[0] = address(stakingToken);
-            path[1] = swapToken;
-            tokenAmount = swapRouter.getAmountsOut(amount, path)[1];
-        }
-        return tokenAmount >= swapTokenAmountThresholdForStaking;
-    }
 
     //A user can withdraw its staking tokens even if there is no rewards tokens on the contract account
     function withdraw(uint256 nonce) public override nonReentrant whenNotPaused {
-        require(stakeNonceInfos[msg.sender][nonce].stakingTokenAmount > 0, "LockStakingRewardMinAmountFixedAPY: This stake nonce was withdrawn");
-        require(stakeNonceInfos[msg.sender][nonce].unlockTime < block.timestamp, "LockStakingRewardMinAmountFixedAPY: Locked");
+        require(stakeNonceInfos[msg.sender][nonce].stakingTokenAmount > 0, "LockStakingRewardFixedAPY: This stake nonce was withdrawn");
+        require(stakeNonceInfos[msg.sender][nonce].unlockTime < block.timestamp, "LockStakingRewardFixedAPY: Locked");
         uint amount = stakeNonceInfos[msg.sender][nonce].stakingTokenAmount;
         uint amountRewardEquivalent = stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount;
         _totalSupply -= amount;
         _totalSupplyRewardEquivalent -= amountRewardEquivalent;
         _balances[msg.sender] -= amount;
         _balancesRewardEquivalent[msg.sender] -= amountRewardEquivalent;
+        stakingToken.safeTransfer(msg.sender, amount);
         stakeNonceInfos[msg.sender][nonce].stakingTokenAmount = 0;
         stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount = 0;
-        stakingToken.safeTransfer(msg.sender, amount);
-        
         emit Withdrawn(msg.sender, amount);
     }
 
     function getReward() public override nonReentrant whenNotPaused {
         uint256 reward = earned(msg.sender);
         if (reward > 0) {
-            for (uint256 i = 0; i < stakeNonces[msg.sender]; i++) {
-                stakeNonceInfos[msg.sender][i].stakeTime = block.timestamp;
-            }
+            weightedStakeDate[msg.sender] = block.timestamp;
             rewardsToken.safeTransfer(msg.sender, reward);
             emit RewardPaid(msg.sender, reward);
-        }
-    }
-
-    function getRewardForUser(address user) public override nonReentrant whenNotPaused {
-        require(msg.sender == owner, "LockStakingRewardMinAmountFixedAPY :: isn`t allowed to call rewards");
-        uint256 reward = earned(user);
-        if (reward > 0) {
-            for (uint256 i = 0; i < stakeNonces[user]; i++) {
-                stakeNonceInfos[user][i].stakeTime = block.timestamp;
-            }
-            rewardsToken.safeTransfer(user, reward);
-            emit RewardPaid(user, reward);
         }
     }
 
@@ -421,16 +393,7 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         withdraw(nonce);
     }
 
-    function exit() external {
-        getReward();
-        for (uint256 i = 0; i < stakeNonces[msg.sender]; i++) {
-            if (stakeNonceInfos[msg.sender][i].stakingTokenAmount > 0) {
-                withdraw(i);
-            }
-        }
-    }
-
-    function getEquivalentAmount(uint amount) public view returns (uint) {
+   function getEquivalentAmount(uint amount) public view returns (uint) {
         address[] memory path = new address[](2);
 
         uint equivalent;
@@ -448,19 +411,25 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         }
         
         return equivalent;
-    }
-
-    function setPaused(bool _paused) external onlyOwner {
-        if (_paused) _pause();
-        else _unpause();
-    }
-
-    function updateRewardRate(uint256 _rewardRate) external onlyOwner {
+   }
+ function updateRewardRate(uint256 _rewardRate) external onlyOwner {
         rewardRate = _rewardRate;
         emit RewardRateUpdated(rateChangesNonce, _rewardRate, block.timestamp);
         APYcheckpoints[rateChangesNonce++] = APYCheckpoint(block.timestamp, _rewardRate);
+    } 
+ function updateRewardAmount(uint256 reward) external onlyOwner {
+        rewardRate = reward;
+        emit RewardUpdated(reward);
+    }
+  function updatePriceFeed(address newPriceFeed) external onlyOwner {
+        require(newPriceFeed != address(0), "LockStakingRewardFixedAPY: Address is zero");
+        priceFeed = IPriceFeed(newPriceFeed);
     }
 
+    function toggleUsePriceFeeds() external onlyOwner {
+        usePriceFeeds = !usePriceFeeds;
+        emit ToggleUsePriceFeeds(usePriceFeeds);
+    }
     function updateSwapRouter(address newSwapRouter) external onlyOwner {
         require(newSwapRouter != address(0), "LockStakingRewardMinAmountFixedAPY: Address is zero");
         swapRouter = INimbusRouter(newSwapRouter);
@@ -475,23 +444,18 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         swapTokenAmountThresholdForStaking = threshold;
     }
 
-    function updatePriceFeed(address newPriceFeed) external onlyOwner {
-        require(newPriceFeed != address(0), "LockStakingRewardMinAmountFixedAPY: Address is zero");
-        priceFeed = IPriceFeed(newPriceFeed);
+    function setPaused(bool _paused) external onlyOwner {
+        if (_paused) _pause();
+        else _unpause();
     }
 
-    function toggleUsePriceFeeds() external onlyOwner {
-        usePriceFeeds = !usePriceFeeds;
-        emit ToggleUsePriceFeeds(usePriceFeeds);
-    }
-
-    function rescue(address to, address token, uint256 amount) external onlyOwner whenPaused {
+    function rescue(address to, address token, uint256 amount) external onlyOwner whenPaused  {
         require(to != address(0), "LockStakingRewardMinAmountFixedAPY: Cannot rescue to the zero address");
         require(amount > 0, "LockStakingRewardMinAmountFixedAPY: Cannot rescue 0");
         require(token != address(stakingToken), "LockStakingRewardMinAmountFixedAPY: Cannot rescue staking token");
         //owner can rescue rewardsToken if there is spare unused tokens on staking contract balance
 
-        IBEP20(token).safeTransfer(to, amount);
+        IERC20(token).safeTransfer(to, amount);
         emit RescueToken(to, address(token), amount);
     }
 
