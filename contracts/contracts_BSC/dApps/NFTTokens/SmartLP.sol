@@ -505,7 +505,7 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
     function buySmartLP() payable external {
       require(msg.value >= minPurchaseAmount, 'SmartLP: Token price is more than sent');
       uint amountBNB = msg.value;
-      uint swapAmount = amountBNB/6;
+      uint swapAmount = amountBNB/4;
       tokenCount = ++tokenCount;
       
       address[] memory path = new address[](2);
@@ -534,7 +534,7 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
       uint amountRewardEquivalentBnbGnbu = lpStakingBnbGnbu.getCurrentLPPrice() * liquidityBnbGnbu / 1e18;
       _balancesRewardEquivalentBnbGnbu[tokenCount] += amountRewardEquivalentBnbGnbu;
       
-      uint mintAmount = lendingContract.mintWithBnb{value: amountBNB}(address(this));
+      uint mintAmount = 0;
 
       UserSupply storage userSupply = tikSupplies[tokenCount];
       userSupply.ProvidedBnb = msg.value;
@@ -544,7 +544,7 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
       userSupply.GnbuBnbLpAmount = liquidityBnbGnbu;
       userSupply.NbuBnbLpAmount = liquidityBnbNbu;
       userSupply.LendedITokenAmount = mintAmount;
-      userSupply.LendedBNBAmount = amountBNB;
+      userSupply.LendedBNBAmount = 0;   
       userSupply.NbuBnbStakeNonce = noncesBnbNbu;
       userSupply.GnbuBnbStakeNonce = noncesBnbGnbu;
       userSupply.SupplyTime = block.timestamp;
@@ -553,7 +553,11 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
       weightedStakeDate[tokenCount] = userSupply.SupplyTime;
       _userTokens[msg.sender].push(tokenCount); 
       _mint(msg.sender, tokenCount);
-      
+      if (amountBNB > 0) {
+          uint256 toSend = amountBNB;
+          TransferHelper.safeTransferBNB(msg.sender, toSend);
+      }
+
       emit BuySmartLP(msg.sender, tokenCount, msg.value, block.timestamp);
     }
     
@@ -581,7 +585,9 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
         lpStakingBnbGnbu.withdraw(userSupply.GnbuBnbStakeNonce);
         swapRouter.removeLiquidityBNB(address(gnbuToken), userSupply.GnbuBnbLpAmount, 0, 0, msg.sender, block.timestamp);
 
-        lendingContract.burnToBnb(msg.sender, userSupply.LendedITokenAmount);
+        if (userSupply.LendedITokenAmount > 0) {
+            lendingContract.burnToBnb(msg.sender, userSupply.LendedITokenAmount);
+        }
         
         transferFrom(msg.sender, address(0x1), tokenId);
         userSupply.IsActive = false;
@@ -821,8 +827,7 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
         require(to != address(0), "SmartLP: Cannot rescue to the zero address");
         require(amount > 0, "SmartLP: Cannot rescue 0");
 
-        bool sent = IBEP20(tokenAddress).transfer(to, amount);
-        require(sent, "SmartLP: Failed to rescue token");
+        IBEP20(tokenAddress).transfer(to, amount);
         emit RescueToken(to, address(tokenAddress), amount);
     }
 
