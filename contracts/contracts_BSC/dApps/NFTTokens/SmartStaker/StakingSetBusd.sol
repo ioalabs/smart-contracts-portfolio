@@ -63,6 +63,7 @@ contract StakingSetBusd is StakingSetStorage {
         require(IERC20Upgradeable(_nbuToken).approve(_NbuStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
         require(IERC20Upgradeable(_gnbuToken).approve(_GnbuStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
         require(IERC20Upgradeable(_busdToken).approve(_nimbusRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
+        require(IERC20Upgradeable(_busdToken).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
 
         require(IERC20Upgradeable(_lpBnbCake).approve(_CakeStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
         require(IERC20Upgradeable(_lpBnbCake).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
@@ -86,57 +87,53 @@ contract StakingSetBusd is StakingSetStorage {
 
 
     function buyStakingSet(uint256 amount, uint256 tokenId) external onlyHub {
-        require(amount >= minPurchaseAmount, "StakingSet: Token price is more than sent");
-        providedAmount[tokenId] = amount;
-        emit BuyStakingSet(tokenId, purchaseToken, amount, block.timestamp);
+      require(amount >= minPurchaseAmount, "StakingSet: Token price is more than sent");
+      providedAmount[tokenId] = amount;
+      emit BuyStakingSet(tokenId, purchaseToken, amount, block.timestamp);
 
-        (uint256 nbuAmount,uint256 gnbuAmount,uint256 cakeLPamount) = makeSwaps(amount); 
+      (uint256 nbuAmount,uint256 gnbuAmount,uint256 cakeLPamount) = makeSwaps(amount); 
 
-        uint256 nonceNbu = NbuStaking.stakeNonces(address(this));
-        _balancesRewardEquivalentNbu[tokenId] += nbuAmount;
+      uint256 nonceNbu = NbuStaking.stakeNonces(address(this));
+      _balancesRewardEquivalentNbu[tokenId] += nbuAmount;
 
      
-        uint256 nonceGnbu = GnbuStaking.stakeNonces(address(this));
-        uint256 amountRewardEquivalentGnbu = GnbuStaking.getEquivalentAmount(gnbuAmount);
-        _balancesRewardEquivalentGnbu[tokenId] += amountRewardEquivalentGnbu;
+      uint256 nonceGnbu = GnbuStaking.stakeNonces(address(this));
+      uint256 amountRewardEquivalentGnbu = GnbuStaking.getEquivalentAmount(gnbuAmount);
+      _balancesRewardEquivalentGnbu[tokenId] += amountRewardEquivalentGnbu;
 
       
-        IMasterChef.UserInfo memory user = CakeStaking.userInfo(cakePID, address(this));
-        uint oldCakeShares = user.amount;
+      IMasterChef.UserInfo memory user = CakeStaking.userInfo(cakePID, address(this));
+      uint oldCakeShares = user.amount;
 
 
-        UserSupply storage userSupply = tikSupplies[tokenId];
-        userSupply.IsActive = true;
-        userSupply.NbuStakingAmount = nbuAmount;
-        userSupply.GnbuStakingAmount = gnbuAmount;
-        userSupply.CakeBnbAmount = cakeLPamount;
-        userSupply.NbuStakeNonce = nonceNbu;
-        userSupply.GnbuStakeNonce = nonceGnbu;
-        userSupply.SupplyTime = block.timestamp;
-        userSupply.TokenId = tokenId;
+      UserSupply storage userSupply = tikSupplies[tokenId];
+      userSupply.IsActive = true;
+      userSupply.NbuStakingAmount = nbuAmount;
+      userSupply.GnbuStakingAmount = gnbuAmount;
+      userSupply.CakeBnbAmount = cakeLPamount;
+      userSupply.NbuStakeNonce = nonceNbu;
+      userSupply.GnbuStakeNonce = nonceGnbu;
+      userSupply.SupplyTime = block.timestamp;
+      userSupply.TokenId = tokenId;
 
-        uint lpBalanceOld = lpBnbCake.balanceOf(address(CakeStaking));
-        CakeStaking.deposit(cakePID,cakeLPamount);
-        uint lpBalanceNew = lpBnbCake.balanceOf(address(CakeStaking));
-        require(lpBalanceNew - cakeLPamount == lpBalanceOld, "StakingSet: Cake/BNB LP staking deposit is unsuccessful");
-
-        user = CakeStaking.userInfo(cakePID, address(this));
-        userSupply.CakeShares = user.amount - oldCakeShares;
-        userSupply.CurrentCakeShares = user.amount;
-        userSupply.CurrentRewardDebt = user.rewardDebt;
-      
-        weightedStakeDate[tokenId] = userSupply.SupplyTime;
-        counter++;
-
-        uint256 oldBalanceNbu = NbuStaking.balanceOf(address(this));
-        NbuStaking.stake(nbuAmount);
-        uint256 newBalanceNbu = NbuStaking.balanceOf(address(this));
-        require(newBalanceNbu - nbuAmount == oldBalanceNbu, "StakingSet: NBU staking deposit is unsuccessful");
-        
-        uint256 oldBalanceGnbu = GnbuStaking.balanceOf(address(this));
-        GnbuStaking.stake(gnbuAmount);
-        uint256 newBalanceGnbu = GnbuStaking.balanceOf(address(this));
-        require(newBalanceGnbu - gnbuAmount == oldBalanceGnbu, "StakingSet: GNBU staking deposit is unsuccessful");
+      uint lpBalanceOld = lpBnbCake.balanceOf(address(CakeStaking));
+      CakeStaking.deposit(cakePID,cakeLPamount);
+      uint lpBalanceNew = lpBnbCake.balanceOf(address(CakeStaking));
+      require(lpBalanceNew - cakeLPamount == lpBalanceOld, "StakingSet: Cake/BNB LP staking deposit is unsuccessful");
+      user = CakeStaking.userInfo(cakePID, address(this));
+      userSupply.CakeShares = user.amount - oldCakeShares;
+      userSupply.CurrentCakeShares = user.amount;
+      userSupply.CurrentRewardDebt = user.rewardDebt;
+      weightedStakeDate[tokenId] = userSupply.SupplyTime;
+      counter++;
+      uint256 oldBalanceNbu = NbuStaking.balanceOf(address(this));
+      NbuStaking.stake(nbuAmount);
+      uint256 newBalanceNbu = NbuStaking.balanceOf(address(this));
+      require(newBalanceNbu - nbuAmount == oldBalanceNbu, "StakingSet: NBU staking deposit is unsuccessful");
+      uint256 oldBalanceGnbu = GnbuStaking.balanceOf(address(this));
+      GnbuStaking.stake(gnbuAmount);
+      uint256 newBalanceGnbu = GnbuStaking.balanceOf(address(this));
+      require(newBalanceGnbu - gnbuAmount == oldBalanceGnbu, "StakingSet: GNBU staking deposit is unsuccessful");
     }
 
     function makeSwaps(uint256 amount) private returns(uint256,uint256,uint256) {
@@ -144,8 +141,6 @@ contract StakingSetBusd is StakingSetStorage {
       address[] memory path = new address[](2);
       path[0] = address(busdToken);
       path[1] = address(binanceBNB);
-      if (busdToken.allowance(address(this), address(pancakeRouter)) < amount)
-        require(busdToken.approve(address(pancakeRouter), type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
       (uint[] memory amountsBusdBnb) = pancakeRouter.swapExactTokensForETH(amount, 0, path, address(this), swapDeadline);
       amount = amountsBusdBnb[1] * MULTIPLIER;
       
