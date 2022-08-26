@@ -113,17 +113,24 @@ contract StakingSet is StakingSetStorage {
       userSupply.SupplyTime = block.timestamp;
       userSupply.TokenId = tokenId;
 
+      uint lpBalanceOld = lpBnbCake.balanceOf(address(CakeStaking));
       CakeStaking.deposit(cakePID,cakeLPamount);
+      uint lpBalanceNew = lpBnbCake.balanceOf(address(CakeStaking));
+      require(lpBalanceNew - cakeLPamount == lpBalanceOld, "StakingSet: Cake/BNB LP staking deposit is unsuccessful");
       user = CakeStaking.userInfo(cakePID, address(this));
       userSupply.CakeShares = user.amount - oldCakeShares;
       userSupply.CurrentCakeShares = user.amount;
       userSupply.CurrentRewardDebt = user.rewardDebt;
-      
       weightedStakeDate[tokenId] = userSupply.SupplyTime;
       counter++;
-      
+      uint256 oldBalanceNbu = NbuStaking.balanceOf(address(this));
       NbuStaking.stake(nbuAmount);
+      uint256 newBalanceNbu = NbuStaking.balanceOf(address(this));
+      require(newBalanceNbu - nbuAmount == oldBalanceNbu, "StakingSet: NBU staking deposit is unsuccessful");
+      uint256 oldBalanceGnbu = GnbuStaking.balanceOf(address(this));
       GnbuStaking.stake(gnbuAmount);
+      uint256 newBalanceGnbu = GnbuStaking.balanceOf(address(this));
+      require(newBalanceGnbu - gnbuAmount == oldBalanceGnbu, "StakingSet: GNBU staking deposit is unsuccessful");
     }
 
     function makeSwaps(uint256 amount) private returns(uint256,uint256,uint256) {
