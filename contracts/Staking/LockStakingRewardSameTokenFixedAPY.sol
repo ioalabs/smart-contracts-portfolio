@@ -115,10 +115,13 @@ interface ILockStakingRewards {
     function totalSupply() external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
     function stake(uint256 amount) external;
+    function getStakeLock(address user, uint stakeNonce) external returns (uint256);
+    function getStakeAmounts(address user, uint stakeNonce) external returns (uint256);
     function stakeFor(uint256 amount, address user) external;
     function getReward() external;
     function withdraw(uint256 nonce) external;
     function withdrawAndGetReward(uint256 nonce) external;
+    function lockDuration() external returns (uint256);
 }
 
 interface IERC20Permit {
@@ -202,6 +205,14 @@ contract LockStakingRewardSameTokenFixedAPY is ILockStakingRewards, ReentrancyGu
         stakeLocks[msg.sender][stakeNonce] = block.timestamp + lockDuration;
         stakeAmounts[msg.sender][stakeNonce] = amount;
         emit Staked(msg.sender, amount);
+    }
+
+    function getStakeLocks(address user, uint stakeNonce) external override returns (uint256) {
+        return stakeLocks[user][stakeNonce];
+    }
+
+    function getStakeAmounts(address user, uint stakeNonce) external override returns (uint256) {
+        return stakeAmounts[user][stakeNonce];
     }
 
     function stakeFor(uint256 amount, address user) external override nonReentrant {
