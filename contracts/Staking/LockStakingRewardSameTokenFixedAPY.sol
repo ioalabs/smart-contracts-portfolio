@@ -115,8 +115,8 @@ interface ILockStakingRewards {
     function totalSupply() external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
     function stake(uint256 amount) external;
-    function getStakeLock(address user, uint stakeNonce) external returns (uint256);
-    function getStakeAmounts(address user, uint stakeNonce) external returns (uint256);
+    function stakeLocks(address user, uint stakeNonce) external returns (uint256);
+    function stakeAmounts(address user, uint stakeNonce) external returns (uint256);
     function stakeFor(uint256 amount, address user) external;
     function getReward() external;
     function withdraw(uint256 nonce) external;
