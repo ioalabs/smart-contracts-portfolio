@@ -1,10 +1,11 @@
 pragma solidity 0.8.0;
 
 // ----------------------------------------------------------------------------
-// NIMB token main contract (2022, mintable, burnable)
+// NIMB token main contract (2022)
 //
 // Symbol       : NIMB
 // Name         : Nimbus Utility
+// Total supply : 10.000.000.000 (burnable)
 // Decimals     : 18
 // ----------------------------------------------------------------------------
 // SPDX-License-Identifier: MIT
@@ -93,7 +94,7 @@ contract NIMB is IBEP20, Ownable, Pausable {
     mapping (address => mapping (uint => uint)) private _vestingTypes; //0 - multivest, 1 - single vest, > 2 give by vester id
     mapping (address => mapping (uint => uint)) private _vestingReleaseStartDates;
 
-    uint private _totalSupply;
+    uint private _totalSupply = 10_000_000_000e18;
     string private constant _name = "Nimbus Utility";
     string private constant _symbol = "NIMB";
     uint8 private constant _decimals = 18;
@@ -105,6 +106,9 @@ contract NIMB is IBEP20, Ownable, Pausable {
     uint public giveAmount;
     mapping (address => bool) public vesters;
     mapping (address => bool) public allowedReceivers;
+    bool public receiversListLocked;
+
+    uint public issuedSupply;
 
     bytes32 public immutable DOMAIN_SEPARATOR;
     bytes32 public constant PERMIT_TYPEHASH = keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
@@ -113,7 +117,6 @@ contract NIMB is IBEP20, Ownable, Pausable {
     event Unvest(address indexed user, uint amount);
     event Mint(address indexed receiver, uint256 amount);
     event UpdateAllowedReceiver(address indexed receiver, bool isAllowed);
-
 
     constructor () {
         uint chainId = block.chainid;
@@ -126,7 +129,7 @@ contract NIMB is IBEP20, Ownable, Pausable {
                 address(this)
             )
         );
-        giveAmount = 10_000_000_000e18 / 10;
+        giveAmount = _totalSupply / 10;
     }
 
     receive() payable external {
@@ -159,11 +162,11 @@ contract NIMB is IBEP20, Ownable, Pausable {
 
     function mint(address receiver, uint amount) public onlyOwner {
         require(allowedReceivers[receiver], "NIMB::mint: receiver is not allowed");
-        require(_totalSupply + amount > _totalSupply);
+        require(issuedSupply + amount <= _totalSupply);
         require(_unfrozenBalances[receiver] + amount > _unfrozenBalances[receiver]);
 
         _unfrozenBalances[receiver] += amount;
-        _totalSupply += amount;
+        issuedSupply += amount;
         emit Transfer(address(0), receiver, amount);
     }
 
@@ -236,13 +239,16 @@ contract NIMB is IBEP20, Ownable, Pausable {
     }
 
     function updateAllowedReceiver(address receiver, bool isAllowed) external onlyOwner {
+        require(!receiversListLocked, "NIMB::updateAllowedReceiver: receivers list locked");
         require(receiver != address(0), "NIMB::updateAllowedReceiver: receiver address is equal to 0");
         allowedReceivers[receiver] = isAllowed;
 
         emit UpdateAllowedReceiver(receiver, isAllowed);
     }
 
-
+    function lockReceiversList() external onlyOwner {
+        receiversListLocked = true;
+    }
 
     function allowance(address owner, address spender) external view override returns (uint) {
         return _allowances[owner][spender];
