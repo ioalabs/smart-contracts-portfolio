@@ -1,11 +1,11 @@
-pragma solidity =0.8.0;
+pragma solidity 0.8.0;
 
 // ----------------------------------------------------------------------------
-// NBU token main contract (2020)
+// NIMB token main contract (2022)
 //
-// Symbol       : NBU
-// Name         : Nimbus
-// Total supply : 1.000.000.000 (burnable)
+// Symbol       : NIMB
+// Name         : Nimbus Utility
+// Total supply : 10.000.000.000 (burnable)
 // Decimals     : 18
 // ----------------------------------------------------------------------------
 // SPDX-License-Identifier: MIT
@@ -74,16 +74,16 @@ contract Pausable is Ownable {
 
     function pause() onlyOwner whenNotPaused public {
         paused = true;
-        Pause();
+        emit Pause();
     }
 
     function unpause() onlyOwner whenPaused public {
         paused = false;
-        Unpause();
+        emit Unpause();
     }
 }
 
-contract NBU is IBEP20, Ownable, Pausable {
+contract NIMB is IBEP20, Ownable, Pausable {
     mapping (address => mapping (address => uint)) private _allowances;
     
     mapping (address => uint) private _unfrozenBalances;
@@ -94,27 +94,30 @@ contract NBU is IBEP20, Ownable, Pausable {
     mapping (address => mapping (uint => uint)) private _vestingTypes; //0 - multivest, 1 - single vest, > 2 give by vester id
     mapping (address => mapping (uint => uint)) private _vestingReleaseStartDates;
 
-    uint private _totalSupply = 1_000_000_000e18;
-    string private constant _name = "Nimbus";
-    string private constant _symbol = "NBU";
+    uint private _totalSupply = 10_000_000_000e18;
+    string private constant _name = "Nimbus Utility";
+    string private constant _symbol = "NIMB";
     uint8 private constant _decimals = 18;
 
     uint private constant vestingFirstPeriod = 60 days;
     uint private constant vestingSecondPeriod = 152 days;
+    
 
     uint public giveAmount;
     mapping (address => bool) public vesters;
+    mapping (address => bool) public allowedReceivers;
+    bool public receiversListLocked;
+
+    uint public issuedSupply;
 
     bytes32 public immutable DOMAIN_SEPARATOR;
     bytes32 public constant PERMIT_TYPEHASH = keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
     mapping (address => uint) public nonces;
 
     event Unvest(address indexed user, uint amount);
+    event UpdateAllowedReceiver(address indexed receiver, bool isAllowed);
 
     constructor () {
-        _unfrozenBalances[owner] = _totalSupply;
-        emit Transfer(address(0), owner, _totalSupply); 
-
         uint chainId = block.chainid;
 
         DOMAIN_SEPARATOR = keccak256(
@@ -150,19 +153,29 @@ contract NBU is IBEP20, Ownable, Pausable {
         _transfer(sender, recipient, amount);
         
         uint256 currentAllowance = _allowances[sender][msg.sender];
-        require(currentAllowance >= amount, "NBU::transferFrom: transfer amount exceeds allowance");
+        require(currentAllowance >= amount, "NIMB::transferFrom: transfer amount exceeds allowance");
         _approve(sender, msg.sender, currentAllowance - amount);
 
         return true;
+    }
+
+    function mint(address receiver, uint amount) public onlyOwner {
+        require(allowedReceivers[receiver], "NIMB::mint: receiver is not allowed");
+        require(issuedSupply + amount <= _totalSupply);
+        require(_unfrozenBalances[receiver] + amount > _unfrozenBalances[receiver]);
+
+        _unfrozenBalances[receiver] += amount;
+        issuedSupply += amount;
+        emit Transfer(address(0), receiver, amount);
     }
 
     function permit(address owner, address spender, uint amount, uint deadline, uint8 v, bytes32 r, bytes32 s) external whenNotPaused {
         bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner, spender, amount, nonces[owner]++, deadline));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash));
         address signatory = ecrecover(digest, v, r, s);
-        require(signatory != address(0), "NBU::permit: invalid signature");
-        require(signatory == owner, "NBU::permit: unauthorized");
-        require(block.timestamp <= deadline, "NBU::permit: signature expired");
+        require(signatory != address(0), "NIMB::permit: invalid signature");
+        require(signatory == owner, "NIMB::permit: unauthorized");
+        require(block.timestamp <= deadline, "NIMB::permit: signature expired");
 
         _allowances[owner][spender] = amount;
 
@@ -176,14 +189,14 @@ contract NBU is IBEP20, Ownable, Pausable {
 
     function decreaseAllowance(address spender, uint subtractedValue) external returns (bool) {
         uint256 currentAllowance = _allowances[msg.sender][spender];
-        require(currentAllowance >= subtractedValue, "NBU::decreaseAllowance: decreased allowance below zero");
+        require(currentAllowance >= subtractedValue, "NIMB::decreaseAllowance: decreased allowance below zero");
         _approve(msg.sender, spender, currentAllowance - subtractedValue);
 
         return true;
     }
 
     function unvest() external whenNotPaused returns (uint unvested) {
-        require (_vestingNonces[msg.sender] > 0, "NBU::unvest:No vested amount");
+        require (_vestingNonces[msg.sender] > 0, "NIMB::unvest:No vested amount");
         for (uint i = 1; i <= _vestingNonces[msg.sender]; i++) {
             if (_vestingAmounts[msg.sender][i] == _unvestedAmounts[msg.sender][i]) continue;
             if (_vestingReleaseStartDates[msg.sender][i] > block.timestamp) break;
@@ -201,22 +214,22 @@ contract NBU is IBEP20, Ownable, Pausable {
     }
 
     function give(address user, uint amount, uint vesterId) external {
-        require (giveAmount > amount, "NBU::give: give finished");
-        require (vesters[msg.sender], "NBU::give: not vester");
+        require (giveAmount > amount, "NIMB::give: give finished");
+        require (vesters[msg.sender], "NIMB::give: not vester");
         giveAmount -= amount;
         _vest(user, amount, vesterId);
      }
 
     function vest(address user, uint amount) external {
-        require (vesters[msg.sender], "NBU::vest: not vester");
+        require (vesters[msg.sender], "NIMB::vest: not vester");
         _vest(user, amount, 1);
     }
 
     function burnTokens(uint amount) external onlyOwner returns (bool success) {
-        require(amount <= _unfrozenBalances[owner], "NBU::burnTokens: exceeds available amount");
+        require(amount <= _unfrozenBalances[owner], "NIMB::burnTokens: exceeds available amount");
 
         uint256 ownerBalance = _unfrozenBalances[owner];
-        require(ownerBalance >= amount, "NBU::burnTokens: burn amount exceeds owner balance");
+        require(ownerBalance >= amount, "NIMB::burnTokens: burn amount exceeds owner balance");
 
         _unfrozenBalances[owner] = ownerBalance - amount;
         _totalSupply -= amount;
@@ -224,7 +237,17 @@ contract NBU is IBEP20, Ownable, Pausable {
         return true;
     }
 
+    function updateAllowedReceiver(address receiver, bool isAllowed) external onlyOwner {
+        require(!receiversListLocked, "NIMB::updateAllowedReceiver: receivers list locked");
+        require(receiver != address(0), "NIMB::updateAllowedReceiver: receiver address is equal to 0");
+        allowedReceivers[receiver] = isAllowed;
 
+        emit UpdateAllowedReceiver(receiver, isAllowed);
+    }
+
+    function lockReceiversList() external onlyOwner {
+        receiversListLocked = true;
+    }
 
     function allowance(address owner, address spender) external view override returns (uint) {
         return _allowances[owner][spender];
@@ -287,19 +310,19 @@ contract NBU is IBEP20, Ownable, Pausable {
 
 
     function _approve(address owner, address spender, uint amount) private {
-        require(owner != address(0), "NBU::_approve: approve from the zero address");
-        require(spender != address(0), "NBU::_approve: approve to the zero address");
+        require(owner != address(0), "NIMB::_approve: approve from the zero address");
+        require(spender != address(0), "NIMB::_approve: approve to the zero address");
 
         _allowances[owner][spender] = amount;
         emit Approval(owner, spender, amount);
     }
 
     function _transfer(address sender, address recipient, uint amount) private {
-        require(sender != address(0), "NBU::_transfer: transfer from the zero address");
-        require(recipient != address(0), "NBU::_transfer: transfer to the zero address");
+        require(sender != address(0), "NIMB::_transfer: transfer from the zero address");
+        require(recipient != address(0), "NIMB::_transfer: transfer to the zero address");
 
         uint256 senderAvailableBalance = _unfrozenBalances[sender];
-        require(senderAvailableBalance >= amount, "NBU::_transfer: amount exceeds available for transfer balance");
+        require(senderAvailableBalance >= amount, "NIMB::_transfer: amount exceeds available for transfer balance");
         _unfrozenBalances[sender] = senderAvailableBalance - amount;
         _unfrozenBalances[recipient] += amount;
 
@@ -307,7 +330,7 @@ contract NBU is IBEP20, Ownable, Pausable {
     }
 
     function _vest(address user, uint amount, uint vestType) private {
-        require(user != address(0), "NBU::_vest: vest to the zero address");
+        require(user != address(0), "NIMB::_vest: vest to the zero address");
         uint nonce = ++_vestingNonces[user];
         _vestingAmounts[user][nonce] = amount;
         _vestingReleaseStartDates[user][nonce] = block.timestamp + vestingFirstPeriod;
@@ -357,7 +380,7 @@ contract NBU is IBEP20, Ownable, Pausable {
     }
 
     function updateGiveAmount(uint amount) external onlyOwner { 
-        require (_unfrozenBalances[owner] > amount, "NBU::updateGiveAmount: exceed owner balance");
+        require (_unfrozenBalances[owner] > amount, "NIMB::updateGiveAmount: exceed owner balance");
         giveAmount = amount;
     }
     
