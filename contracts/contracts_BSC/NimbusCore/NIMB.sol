@@ -115,7 +115,6 @@ contract NIMB is IBEP20, Ownable, Pausable {
     mapping (address => uint) public nonces;
 
     event Unvest(address indexed user, uint amount);
-    event Mint(address indexed receiver, uint256 amount);
     event UpdateAllowedReceiver(address indexed receiver, bool isAllowed);
 
     constructor () {
