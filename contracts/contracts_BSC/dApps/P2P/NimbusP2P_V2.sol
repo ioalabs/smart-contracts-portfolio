@@ -8,21 +8,6 @@ import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
-library TransferHelper {
-    function safeTransfer(address token, address to, uint256 value) internal {
-        (bool success, bytes memory data) = token.call(abi.encodeWithSelector(0xa9059cbb, to, value));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), 'TransferHelper: TRANSFER_FAILED');
-    }
-    function safeTransferFrom(address token, address from, address to, uint256 value) internal {
-        (bool success, bytes memory data) = token.call(abi.encodeWithSelector(0x23b872dd, from, to, value));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), 'TransferHelper: TRANSFER_FROM_FAILED');
-    }
-    function safeTransferBNB(address to, uint256 value) internal {
-        (bool success,) = to.call{value:value}(new bytes(0));
-        require(success, 'TransferHelper: BNB_TRANSFER_FAILED');
-    }
-}
-
 interface IEIP721 {
     function safeTransferFrom(address from, address to, uint256 tokenId) external;
     function transferFrom(address from, address to, uint256 tokenId) external;
@@ -46,6 +31,21 @@ interface IEIP20Permit {
 
 interface IEIP20 {
     function decimals() external returns (uint8);
+}
+
+library TransferHelper {
+    function safeTransfer(address token, address to, uint256 value) internal {
+        (bool success, bytes memory data) = token.call(abi.encodeWithSelector(0xa9059cbb, to, value));
+        require(success && (data.length == 0 || abi.decode(data, (bool))), 'TransferHelper: TRANSFER_FAILED');
+    }
+    function safeTransferFrom(address token, address from, address to, uint256 value) internal {
+        (bool success, bytes memory data) = token.call(abi.encodeWithSelector(0x23b872dd, from, to, value));
+        require(success && (data.length == 0 || abi.decode(data, (bool))), 'TransferHelper: TRANSFER_FROM_FAILED');
+    }
+    function safeTransferBNB(address to, uint256 value) internal {
+        (bool success,) = to.call{value:value}(new bytes(0));
+        require(success, 'TransferHelper: BNB_TRANSFER_FAILED');
+    }
 }
 
 contract NimbusP2P_V2Storage is Initializable, ContextUpgradeable, OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgradeable {    
@@ -717,19 +717,6 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
     }
     
     /**
-     * @dev Whenever an {IERC721} `tokenId` token is transferred to this contract via {IERC721-safeTransferFrom}
-     * by `operator` from `from`, this function is called.
-     *
-     * It must return its Solidity selector to confirm the token transfer.
-     * If any other value is returned or the interface is not implemented by the recipient, the transfer will be reverted.
-     *
-     * The selector can be obtained in Solidity with `IERC721Receiver.onERC721Received.selector`.
-     */
-    function onERC721Received(address operator, address from, uint256 tokenId, bytes memory data) external pure override returns (bytes4) {
-        return 0x150b7a02;
-    }
-
-    /**
      * @notice return the State of given multi trade by id
      * @param id - unique trade identifier
      */
@@ -780,6 +767,85 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
      */
     function userTrades(address user) external view returns (uint256[] memory) {
         return _userTrades[user];
+    }
+
+    /**
+     * @dev Whenever an {IERC721} `tokenId` token is transferred to this contract via {IERC721-safeTransferFrom}
+     * by `operator` from `from`, this function is called.
+     *
+     * It must return its Solidity selector to confirm the token transfer.
+     * If any other value is returned or the interface is not implemented by the recipient, the transfer will be reverted.
+     *
+     * The selector can be obtained in Solidity with `IERC721Receiver.onERC721Received.selector`.
+     */
+    function onERC721Received(address operator, address from, uint256 tokenId, bytes memory data) external pure override returns (bytes4) {
+        return 0x150b7a02;
+    }
+
+    /**
+     * @notice allows all NFTs for new trades
+     * @dev This method allows all the NFT contracts to be passed as proposed or asked assets for new trades
+     */
+    function toggleAnyNFTAllowed() external onlyOwner {
+        isAnyNFTAllowed = !isAnyNFTAllowed;
+        emit UpdateIsAnyNFTAllowed(isAnyNFTAllowed);
+    }
+    
+    /**
+     * @notice allows particular NFT for new trades
+     * @param nft - address of NFT
+     * @param isAllowed - boolean (is Allowed)
+     * @dev This method allows the particular NFT contract to be passed as proposed or asked assets for new trades
+     */
+    function updateAllowedNFT(address nft, bool isAllowed) external onlyOwner {
+        _updateAllowedNFT(nft, isAllowed);
+    }
+
+    /**
+     * @notice allows all EIP20 tokens for new trades
+     * @dev This method allows all the EIP20 tokens contracts to be passed as proposed or asked assets for new trades
+     */
+    function toggleAnyEIP20Allowed() external onlyOwner {
+        isAnyEIP20Allowed = !isAnyEIP20Allowed;
+        emit UpdateIsAnyEIP20Allowed(isAnyEIP20Allowed);
+    }
+
+    /**
+     * @notice allows particular EIP20 tokens for new trades
+     * @param tokens - addresses of tokens
+     * @param states - booleans (is Allowed)
+     * @dev This method allows the particular EIP20 tokens contracts to be passed as proposed or asked assets for new trades
+     */
+    function updateAllowedEIP20Tokens(
+        address[] calldata tokens,
+        bool[] calldata states
+    ) external onlyOwner {
+        _updateAllowedEIP20Tokens(tokens, states);
+    }
+
+    /**
+     * @notice Rescues particular EIP20 token`s amount from contract to some address
+     * @param to - address of recepient
+     * @param tokenAddress - address of token
+     * @param amount - amount of token to be withdraw
+     */
+    function rescueEIP20(address to, address tokenAddress, uint256 amount) external onlyOwner whenPaused {
+        require(to != address(0), "NimbusP2P_V2: Cannot rescue to the zero address");
+        require(amount > 0, "NimbusP2P_V2: Cannot rescue 0");
+        emit RescueToken(to, address(tokenAddress), amount);
+        TransferHelper.safeTransfer(tokenAddress, to, amount);
+    }
+
+    /**
+     * @notice Rescues particular NFT by Id from contract to some address
+     * @param to - address of recepient
+     * @param tokenAddress - address of NFT
+     * @param tokenId - id of token to be withdraw
+     */
+    function rescueEIP721(address to, address tokenAddress, uint256 tokenId) external onlyOwner whenPaused {
+        require(to != address(0), "NimbusP2P_V2: Cannot rescue to the zero address");
+        emit RescueToken(to, address(tokenAddress), tokenId);
+        IEIP721(tokenAddress).safeTransferFrom(address(this), to, tokenId);
     }
 
     /**
@@ -836,8 +902,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         trade.deadline = deadline;
         if (isNFTAskedAsset) trade.isAskedAssetNFT = true; 
         emit NewTradeSingle(msg.sender, proposedAsset, proposedAmount, proposedTokenId, askedAsset, askedAmount, askedTokenId, deadline, tradeId);
-        _userTrades[msg.sender].push(tradeId);        
-      
+        _userTrades[msg.sender].push(tradeId);
     }
 
     /**
@@ -904,7 +969,6 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         
         tradesSingle[tradeId].counterparty = msg.sender;
         tradesSingle[tradeId].status = 1;
-      
     }
 
     /**
@@ -931,23 +995,13 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         
         tradesMulti[tradeId].counterparty = msg.sender;
         tradesMulti[tradeId].status = 1;
-      
     }
-
-    /**
-     * @notice allows all NFTs for new trades
-     * @dev This method allows all the NFT contracts to be passed as proposed or asked assets for new trades
-     */
-    function toggleAnyNFTAllowed() external onlyOwner {
-        isAnyNFTAllowed = !isAnyNFTAllowed;
-        emit UpdateIsAnyNFTAllowed(isAnyNFTAllowed);
-    }
-
+    
     /**
      * @notice allows particular NFT for new trades
      * @param nft - address of NFT
      * @param isAllowed - boolean (is Allowed)
-      @dev This method allows the particular NFT contract to be passed as proposed or asked assets for new trades
+     * @dev This method allows the particular NFT contract to be passed as proposed or asked assets for new trades
      */
     function _updateAllowedNFT(address nft, bool isAllowed) private {
         require(AddressUpgradeable.isContract(nft), "NimbusP2P_V2: Not a contract");
@@ -972,25 +1026,6 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
             unchecked { ++i; }
         }
-    }
-
-    /**
-     * @notice allows particular NFT for new trades
-     * @param nft - address of NFT
-     * @param isAllowed - boolean (is Allowed)
-      @dev This method allows the particular NFT contract to be passed as proposed or asked assets for new trades
-     */
-    function updateAllowedNFT(address nft, bool isAllowed) external onlyOwner {
-        _updateAllowedNFT(nft, isAllowed);
-    }
-
-    /**
-     * @notice allows all EIP20 tokens for new trades
-     * @dev This method allows all the EIP20 tokens contracts to be passed as proposed or asked assets for new trades
-     */
-    function toggleAnyEIP20Allowed() external onlyOwner {
-        isAnyEIP20Allowed = !isAnyEIP20Allowed;
-        emit UpdateIsAnyEIP20Allowed(isAnyEIP20Allowed);
     }
 
     /**
@@ -1021,43 +1056,5 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
             _updateAllowedEIP20Token(tokens[i], states[i]);
             unchecked { ++i; }
         }
-    }
-
-    /**
-     * @notice allows particular EIP20 tokens for new trades
-     * @param tokens - addresses of tokens
-     * @param states - booleans (is Allowed)
-     * @dev This method allows the particular EIP20 tokens contracts to be passed as proposed or asked assets for new trades
-     */
-    function updateAllowedEIP20Tokens(
-        address[] calldata tokens,
-        bool[] calldata states
-    ) external onlyOwner {
-        _updateAllowedEIP20Tokens(tokens, states);
-    }
-
-    /**
-     * @notice Rescues particular EIP20 token`s amount from contract to some address
-     * @param to - address of recepient
-     * @param tokenAddress - address of token
-     * @param amount - amount of token to be withdraw
-     */
-    function rescueEIP20(address to, address tokenAddress, uint256 amount) external onlyOwner whenPaused {
-        require(to != address(0), "NimbusP2P_V2: Cannot rescue to the zero address");
-        require(amount > 0, "NimbusP2P_V2: Cannot rescue 0");
-        emit RescueToken(to, address(tokenAddress), amount);
-        TransferHelper.safeTransfer(tokenAddress, to, amount);
-    }
-
-    /**
-     * @notice Rescues particular NFT by Id from contract to some address
-     * @param to - address of recepient
-     * @param tokenAddress - address of NFT
-     * @param tokenId - id of token to be withdraw
-     */
-    function rescueEIP721(address to, address tokenAddress, uint256 tokenId) external onlyOwner whenPaused {
-        require(to != address(0), "NimbusP2P_V2: Cannot rescue to the zero address");
-        emit RescueToken(to, address(tokenAddress), tokenId);
-        IEIP721(tokenAddress).safeTransferFrom(address(this), to, tokenId);
     }
 }
