@@ -8,6 +8,8 @@ import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
+
+
 interface IEIP721 {
     function safeTransferFrom(address from, address to, uint256 tokenId) external;
     function transferFrom(address from, address to, uint256 tokenId) external;
@@ -49,6 +51,21 @@ library TransferHelper {
 }
 
 contract NimbusP2P_V2Storage is Initializable, ContextUpgradeable, OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgradeable {    
+    /**
+     * @notice TradeSingle srtuct
+     * @param initiator  user that create trade 
+     * @param counterparty user that take trade
+     * @param proposedAsset proposed asset contract address
+     * @param proposedAmount proposed amount
+     * @param proposedTokenId  
+     * @param askedAsset asked asset contract address
+     * @param askedAmount asked amount
+     * @param askedTokenId  
+     * @param deadline the expiration date of the trade
+     * @param status //0: Active, 1: success, 2: canceled, 3: withdrawn
+     * @param isAskedAssetNFT 
+     * @dev 
+     */
     struct TradeSingle {
         address initiator;
         address counterparty;
@@ -62,7 +79,21 @@ contract NimbusP2P_V2Storage is Initializable, ContextUpgradeable, OwnableUpgrad
         uint256 status; //0: Active, 1: success, 2: canceled, 3: withdrawn
         bool isAskedAssetNFT;
     }
-
+/**
+     * @notice TradeMulti srtuct
+     * @param initiator user that create trade 
+     * @param counterparty user that take trade
+     * @param proposedAssets an array of addresses proposed asset contracts
+     * @param proposedAmount an array of proposed amounts
+     * @param proposedTokenIds array of ID NFT tokens
+     * @param askedAssets an array of addresses asked asset contracts
+     * @param askedAmount an array of  asked amounts
+     * @param askedTokenIds array of ID NFT tokens
+     * @param deadline the expiration date of the trade
+     * @param status //0: Active, 1: success, 2: canceled, 3: withdrawn
+     * @param isAskedAssetNFT  
+     * @dev 
+     */
     struct TradeMulti {
         address initiator;
         address counterparty;
@@ -76,7 +107,11 @@ contract NimbusP2P_V2Storage is Initializable, ContextUpgradeable, OwnableUpgrad
         uint256 status; //0: Active, 1: success, 2: canceled, 3: withdrawn
         bool isAskedAssetNFTs;
     }
-
+ /**
+     * @notice TradeState enum
+     * @param  //0: Active, 1: success, 2: canceled, 3: withdrawn
+     * @dev 
+     */
     enum TradeState {
         Active,
         Succeeded,
@@ -134,7 +169,11 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Initialize P2P contract
-     * @param _allowedEIP20Tokens - array of allowed EIP20 tokens addresses
+     * @param _allowedEIP20Tokens array of allowed EIP20 tokens addresses
+     * @param _allowedEIP20TokenStates allowed EIP20 token states
+     * @param _allowedNFTTokens array of allowed NFT tokens addresses
+     * @param _allowedNFTTokenStates allowed NFT token states
+     * @param _WBNB WBNB address
      * @dev OpenZeppelin initializer ensures this can only be called once
      * This function also calls initializers on inherited contracts
      */
@@ -165,7 +204,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
     
     /**
      * @notice Sets Contract as paused
-     * @param isPaused - Pausable mode
+     * @param isPaused  Pausable mode
      */
     function setPaused(bool isPaused) external onlyOwner {
         if (isPaused) _pause();
@@ -174,12 +213,12 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates EIP20 to EIP20 trade
-     * @param proposedAsset - proposed asset contract address
-     * @param proposedAmount - proposed amount
-     * @param askedAsset - asked asset contract address
-     * @param askedAmount - asked amount
-     * @param deadline - the expiration date of the trade
-     * @dev This method makes it possible to create a trade for the exchange of tokens BEP-20 standard. 
+     * @param proposedAsset proposed asset contract address
+     * @param proposedAmount proposed amount
+     * @param askedAsset asked asset contract address
+     * @param askedAmount asked amount
+     * @param deadline  the expiration date of the trade
+     * @dev This method makes it possible to create a trade for the exchange of tokens BEP20 standard. 
         You can only exchange tokens allowed on the platform.
      */
     function createTradeEIP20ToEIP20(address proposedAsset, uint256 proposedAmount, address askedAsset, uint256 askedAmount, uint256 deadline) external returns (uint256 tradeId) {
@@ -194,12 +233,12 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates BNB to EIP20 trade
-     * @param askedAsset - proposed asset contract address
-     * @param askedAmount - proposed amount
-     * @param deadline - the expiration date of the trade
+     * @param askedAsset proposed asset contract address
+     * @param askedAmount proposed amount
+     * @param deadline the expiration date of the trade
      * @dev This method makes it possible to create a BNB trade for EIP20 tokens. 
         ProposedAmount is passed in block msg.value
-        for trade EIP20 -> Native Coin use createTradeEIP20ToEIP20 and pass WBNB address as asked asset
+        for trade EIP20 > Native Coin use createTradeEIP20ToEIP20 and pass WBNB address as asked asset
      */
     function createTradeBNBtoEIP20(address askedAsset, uint256 askedAmount, uint256 deadline) payable external returns (uint256 tradeId) {
         require(AddressUpgradeable.isContract(askedAsset), "NimbusP2P_V2: Not contract");
@@ -211,11 +250,12 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates EIP20 to NFT trade
-     * @param proposedAsset - proposed asset contract address
-     * @param proposedAmount - proposed amount
-     * @param askedAsset - asked asset contract address
-     * @param deadline - the expiration date of the trade
-     * @dev This method makes it possible to create a trade for the exchange of tokens BEP-20 standard for tokens EIP721 standart. 
+     * @param proposedAsset proposed asset contract address
+     * @param proposedAmount proposed amount
+     * @param askedAsset asked asset contract address
+     * @param tokenId  unique NFT token identifier
+     * @param deadline the expiration date of the trade
+     * @dev This method makes it possible to create a trade for the exchange of tokens BEP20 standard for tokens EIP721 standart. 
         You can only exchange tokens allowed on the platform.
      */
     function createTradeEIP20ToNFT(address proposedAsset, uint256 proposedAmount, address askedAsset, uint256 tokenId, uint256 deadline) external returns (uint256 tradeId) {
@@ -229,12 +269,13 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates NFT to EIP20 trade
-     * @param proposedAsset - proposed asset contract address
-     * @param askedAsset - asked asset contract address
-     * @param askedAmount - asked amount
-     * @param deadline - the expiration date of the trade
-     * @dev This method makes it possible to create a trade for the exchange of tokens EIP-721 standard for EIP-20.
-        for trade NFT -> Native Coin use createTradeNFTtoEIP20 and pass WBNB address as asked asset
+     * @param proposedAsset proposed asset contract address
+     * @param tokenId  unique NFT token identifier
+     * @param askedAsset asked asset contract address
+     * @param askedAmount asked amount
+     * @param deadline the expiration date of the trade
+     * @dev This method makes it possible to create a trade for the exchange of tokens EIP721 standard for EIP20.
+        for trade NFT > Native Coin use createTradeNFTtoEIP20 and pass WBNB address as asked asset
      */
     function createTradeNFTtoEIP20(address proposedAsset, uint256 tokenId, address askedAsset, uint256 askedAmount, uint256 deadline) external returns (uint256 tradeId) {
         require(AddressUpgradeable.isContract(proposedAsset) && AddressUpgradeable.isContract(askedAsset), "NimbusP2P_V2: Not contracts");
@@ -246,10 +287,10 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates BNB to NFT trade
-     * @param askedAsset - asked asset contract address
-     * @param tokenId - unique NFT token identifier
-     * @param deadline - the expiration date of the trade
-     * @dev This method makes it possible to create a trade for the exchange BNB for EIP-20 tokens. 
+     * @param askedAsset asked asset contract address
+     * @param tokenId unique NFT token identifier
+     * @param deadline the expiration date of the trade
+     * @dev This method makes it possible to create a trade for the exchange BNB for EIP20 tokens. 
         ProposedAmount is passed in block msg.value
      */
     function createTradeBNBtoNFT(address askedAsset, uint256 tokenId, uint256 deadline) payable external returns (uint256 tradeId) {
@@ -262,12 +303,12 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates EIP20 to NFTs multi trade
-     * @param proposedAsset - proposed asset contract address
-     * @param proposedAmount - proposed amount
-     * @param askedAssets - an array of addresses asked asset contracts
-     * @param askedTokenIds - array of ID NFT tokens
-     * @param deadline - the expiration date of the trade
-     * @dev This method makes it possible to create a trade for the exchange of tokens EIP-20 standard for any number of NFT tokens. 
+     * @param proposedAsset proposed asset contract address
+     * @param proposedAmount proposed amount
+     * @param askedAssets an array of addresses asked asset contracts
+     * @param askedTokenIds array of ID NFT tokens
+     * @param deadline the expiration date of the trade
+     * @dev This method makes it possible to create a trade for the exchange of tokens EIP20 standard for any number of NFT tokens. 
         Elements in the arrays asskedAssets and asskedAmounts must have the same indexes. 
         The first element of the asskedAssets array must match the first element of the asskedAmounts array and so on.
      */
@@ -300,14 +341,15 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates NFTs to EIP20 multi trade
-     * @param proposedAssets - an array of addresses proposed asset contracts
-     * @param askedAsset - asked asset contract address
-     * @param proposedTokenIds - asked tokens
-     * @param deadline - the expiration date of the trade
-     * @dev This method makes it possible to create a trade for the exchange of any number of tokens EIP-721 standard for EIP-20 tokens. 
+     * @param proposedAssets an array of addresses proposed asset contracts
+     * @param askedAsset asked asset contract address
+     * @param askedAmount asked amount
+     * @param proposedTokenIds asked tokens
+     * @param deadline the expiration date of the trade
+     * @dev This method makes it possible to create a trade for the exchange of any number of tokens EIP721 standard for EIP20 tokens. 
         Elements in the arrays proposedAssets and proposedAmounts must have the same indexes. 
         The first element of the proposedAssets array must match the first element of the proposedAmounts array and so on.
-        for trade NFTs -> Native Coin use createTradeNFTstoEIP20 and pass WBNB address as asked asset
+        for trade NFTs > Native Coin use createTradeNFTstoEIP20 and pass WBNB address as asked asset
      */
     function createTradeNFTsToEIP20(
         address[] memory proposedAssets, 
@@ -334,9 +376,9 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates BNB to NFTs multi trade
-     * @param askedAssets - an array of addresses asked asset contracts
-     * @param askedTokenIds - array of ID NFT tokens
-     * @param deadline - the expiration date of the trade
+     * @param askedAssets an array of addresses asked asset contracts
+     * @param askedTokenIds array of ID NFT tokens
+     * @param deadline the expiration date of the trade
      * @dev This method makes it possible to create a trade for the exchange of BNB (Native chain coin) for any number of NFT tokens. 
         Elements in the arrays asskedAssets and asskedAmounts must have the same indexes. 
         The first element of the asskedAssets array must match the first element of the asskedAmounts array and so on.
@@ -362,12 +404,12 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates NFTs to EIP20 multi trade
-     * @param proposedAssets - an array of addresses proposed asset contracts
-     * @param proposedAssets - array of ID NFT tokens
-     * @param askedAssets - an array of addresses asked asset contracts
-     * @param askedTokenIds - array of ID NFT tokens
-     * @param deadline - the expiration date of the trade
-     * @dev This method makes it possible to create a trade for the exchange of any number of tokens EIP-721 standard for any number of tokens EIP-721 standard. 
+     * @param proposedAssets an array of addresses proposed asset contracts
+     * @param proposedTokenIds array of ID NFT tokens
+     * @param askedAssets an array of addresses asked asset contracts
+     * @param askedTokenIds array of ID NFT tokens
+     * @param deadline  the expiration date of the trade
+     * @dev This method makes it possible to create a trade for the exchange of any number of tokens EIP721 standard for any number of tokens EIP721 standard. 
         Elements in the arrays proposedAssets and proposedAmounts must have the same indexes. 
         The first element of the proposedAssets array must match the first element of the proposedAmounts array and so on.
         Elements in the arrays asskedAssets and asskedAmounts must have the same indexes. 
@@ -397,15 +439,18 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         tradeId = _createTradeMulti(proposedAssets, 0, proposedTokenIds, askedAssets, 0, askedTokenIds, deadline, true);   
     }
 
-
     /**
      * @notice Creates EIP20 to EIP20 trade with Permit
-     * @param proposedAsset - proposed asset contract address
-     * @param proposedAmount - proposed amount
-     * @param askedAsset - asked asset contract address
-     * @param askedAmount - asked amount
-     * @param deadline - the expiration date of the trade
-     * @dev This method makes it possible to create a trade for the exchange of tokens BEP-20 standard. 
+     * @param proposedAsset proposed asset contract address
+     * @param proposedAmount proposed amount
+     * @param askedAsset asked asset contract address
+     * @param askedAmount asked amount
+     * @param deadline the expiration date of the trade
+     * @param permitDeadline  the expiration date of the permit
+     * @param v the recovery id
+     * @param r outputs of an ECDSA signature
+     * @param s outputs of an ECDSA signature
+     * @dev This method makes it possible to create  trade for the exchange of tokens BEP20 standard. 
         You can only exchange tokens allowed on the platform.
      */
     function createTradeEIP20ToEIP20Permit(
@@ -430,11 +475,16 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates EIP20 to NFT trade with Permit
-     * @param proposedAsset - proposed asset contract address
-     * @param proposedAmount - proposed amount
-     * @param askedAsset - asked asset contract address
-     * @param deadline - the expiration date of the trade
-     * @dev This method makes it possible to create a trade for the exchange of tokens BEP-20 standard for tokens EIP721 standart. 
+     * @param proposedAsset proposed asset contract address
+     * @param proposedAmount proposed amount
+     * @param askedAsset asked asset contract address
+     * @param tokenId unique NFT token identifier
+     * @param deadline the expiration date of the trade
+     * @param permitDeadline the expiration date of the permit
+     * @param v the recovery id
+     * @param r outputs of an ECDSA signature
+     * @param s outputs of an ECDSA signature
+     * @dev This method makes it possible to create a trade for the exchange of tokens BEP20 standard for tokens EIP721 standart. 
         You can only exchange tokens allowed on the platform.
      */
     function createTradeEIP20ToNFTPermit(
@@ -459,12 +509,16 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates EIP20 to NFTs multi trade with Permit
-     * @param proposedAsset - proposed asset contract address
-     * @param proposedAmount - proposed amount
-     * @param askedAssets - an array of addresses asked asset contracts
-     * @param askedTokenIds - array of ID NFT tokens
-     * @param deadline - the expiration date of the trade
-     * @dev This method makes it possible to create a trade for the exchange of tokens EIP-20 standard for any number of NFT tokens. 
+     * @param proposedAsset proposed asset contract address
+     * @param proposedAmount proposed amount
+     * @param askedAssets an array of addresses asked asset contracts
+     * @param askedTokenIds array of ID NFT tokens
+     * @param deadline the expiration date of the trade
+     * @param permitDeadline the expiration date of the permit
+     * @param v the recovery id
+     * @param r outputs of an ECDSA signature
+     * @param s outputs of an ECDSA signature
+     * @dev This method makes it possible to create a trade for the exchange of tokens EIP20 standard for any number of NFT tokens. 
         Elements in the arrays asskedAssets and asskedAmounts must have the same indexes. 
         The first element of the asskedAssets array must match the first element of the asskedAmounts array and so on.
      */
@@ -501,7 +555,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Matches the trade by its id
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      * @dev This method accepts tradeId and supports this trade. 
         As a result of work of this method from a wallet the assked asset on a wallet of the creator of trade is sent.
         This is a method of supporting single trades.
@@ -521,7 +575,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Matches the trade by its id
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      * @dev This method accepts tradeId and supports this trade. 
         As a result of work of this method from a wallet the BNB on a wallet of the creator of trade is sent.
         This is a method of supporting single trades.
@@ -540,7 +594,11 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
     
     /**
      * @notice Matches the single trade by its id (with Permit)
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
+     * @param permitDeadline the expiration date of the permit
+     * @param v the recovery id
+     * @param r outputs of an ECDSA signature
+     * @param s outputs of an ECDSA signature
      * @dev This method accepts tradeId and supports this trade. 
         As a result of work of this method from a wallet the assked asset on a wallet of the creator of trade is sent.
         This is a method of supporting single trades.
@@ -558,7 +616,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Matches the multi trade by its id
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      * @dev This method accepts tradeId and supports this trade. 
         As a result of work of this method from a wallet the assked asset on a wallet of the creator of trade is sent.
         This is a method of supporting multi trades.
@@ -581,7 +639,11 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Matches the multi trade by its id (with Permit)
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
+     * @param permitDeadline the expiration date of the permit
+     * @param v the recovery id
+     * @param r outputs of an ECDSA signature
+     * @param s outputs of an ECDSA signature
      * @dev This method accepts tradeId and supports this trade. 
         As a result of work of this method from a wallet the assked asset on a wallet of the creator of trade is sent.
         This is a method of supporting multi trades.
@@ -610,7 +672,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Cancels the trade by its id
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      * @dev This method takes tradeId and cancels the thread before the deadline. As a result of his work, the proposed assets are returned to the wallet of the creator of the trade
         This is a method of canceling single trades.
      */
@@ -635,7 +697,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Cancels the trade by its id
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      * @dev This method takes tradeId and cancels the thread before the deadline. As a result of his work, the proposed assets are returned to the wallet of the creator of the trade
         This is a method of canceling multi trades.
      */
@@ -661,10 +723,9 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         emit CancelTrade(tradeId);
     }
 
-
     /**
      * @notice Withdraws asset of the particular trade by its id when trade is overdue
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      * @dev This method accepts tradeId and withdraws the proposed assets from the P2P contract after the trade deadline has expired. 
         As a result of his work, the proposed assets are returned to the wallet of the creator of the trade.
      */
@@ -689,7 +750,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Withdraws asset of the particular trade by its id when trade is overdue
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      * @dev This method accepts tradeId and withdraws the proposed assets from the P2P contract after the trade deadline has expired. 
         As a result of his work, the proposed assets are returned to the wallet of the creator of the trade.
      */
@@ -713,12 +774,77 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
        
         tradeMulti.status = 3;
         
-      
     }
-    
+
+    /**
+     * @notice allows particular EIP20 tokens for new trades
+     * @param tokens addresses of tokens
+     * @param states booleans (is Allowed)
+     * @dev This method allows the particular EIP20 tokens contracts to be passed as proposed or asked assets for new trades
+     */
+    function updateAllowedEIP20Tokens(
+        address[] calldata tokens,
+        bool[] calldata states
+    ) external onlyOwner {
+        _updateAllowedEIP20Tokens(tokens, states);
+    }
+
+    /**
+     * @notice Rescues particular EIP20 token`s amount from contract to some address
+     * @param to  address of recepient
+     * @param tokenAddress address of token
+     * @param amount  amount of token to be withdraw
+     */
+    function rescueEIP20(address to, address tokenAddress, uint256 amount) external onlyOwner whenPaused {
+        require(to != address(0), "NimbusP2P_V2: Cannot rescue to the zero address");
+        require(amount > 0, "NimbusP2P_V2: Cannot rescue 0");
+        emit RescueToken(to, address(tokenAddress), amount);
+        TransferHelper.safeTransfer(tokenAddress, to, amount);
+    }
+
+    /**
+     * @notice Rescues particular NFT by Id from contract to some address
+     * @param to address of recepient
+     * @param tokenAddress address of NFT
+     * @param tokenId id of token to be withdraw
+     */
+    function rescueEIP721(address to, address tokenAddress, uint256 tokenId) external onlyOwner whenPaused {
+        require(to != address(0), "NimbusP2P_V2: Cannot rescue to the zero address");
+        emit RescueToken(to, address(tokenAddress), tokenId);
+        IEIP721(tokenAddress).safeTransferFrom(address(this), to, tokenId);
+    }
+
+      /**
+     * @notice allows all NFTs for new trades
+     * @dev This method allows all the NFT contracts to be passed as proposed or asked assets for new trades
+     */
+    function toggleAnyNFTAllowed() external onlyOwner {
+        isAnyNFTAllowed = !isAnyNFTAllowed;
+        emit UpdateIsAnyNFTAllowed(isAnyNFTAllowed);
+    }
+
+    /**
+     * @notice allows particular NFT for new trades
+     * @param nft address of NFT
+     * @param isAllowed boolean (is Allowed)
+     * @dev This method allows the particular NFT contract to be passed as proposed or asked assets for new trades
+     */
+    function updateAllowedNFT(address nft, bool isAllowed) external onlyOwner {
+        _updateAllowedNFT(nft, isAllowed);
+    }
+
+    /**
+     * @notice allows all EIP20 tokens for new trades
+     * @dev This method allows all the EIP20 tokens contracts to be passed as proposed or asked assets for new trades
+     */
+    function toggleAnyEIP20Allowed() external onlyOwner {
+        isAnyEIP20Allowed = !isAnyEIP20Allowed;
+        emit UpdateIsAnyEIP20Allowed(isAnyEIP20Allowed);
+    }
+
     /**
      * @notice return the State of given multi trade by id
-     * @param id - unique trade identifier
+     * @param id unique trade identifier
      */
     function getTradeMulti(uint256 id) external view returns(TradeMulti memory) {
         return tradesMulti[id];
@@ -726,7 +852,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice return whether State of Single trade is active 
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      */
     function state(uint256 tradeId) external view returns (TradeState) { //TODO
         TradeSingle storage trade = tradesSingle[tradeId];
@@ -744,7 +870,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice return whether State of Multi trade is active 
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      */
     function stateMulti(uint256 tradeId) external view returns (TradeState) { //TODO
         TradeMulti storage tradeMulti = tradesMulti[tradeId];
@@ -763,14 +889,14 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice return returns the array of user`s trades Ids 
-     * @param user - user address
+     * @param user user address
      */
     function userTrades(address user) external view returns (uint256[] memory) {
         return _userTrades[user];
     }
 
-    /**
-     * @dev Whenever an {IERC721} `tokenId` token is transferred to this contract via {IERC721-safeTransferFrom}
+     /**
+     * @dev Whenever an {IERC721} `tokenId` token is transferred to this contract via {IERC721safeTransferFrom}
      * by `operator` from `from`, this function is called.
      *
      * It must return its Solidity selector to confirm the token transfer.
@@ -783,74 +909,8 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
     }
 
     /**
-     * @notice allows all NFTs for new trades
-     * @dev This method allows all the NFT contracts to be passed as proposed or asked assets for new trades
-     */
-    function toggleAnyNFTAllowed() external onlyOwner {
-        isAnyNFTAllowed = !isAnyNFTAllowed;
-        emit UpdateIsAnyNFTAllowed(isAnyNFTAllowed);
-    }
-    
-    /**
-     * @notice allows particular NFT for new trades
-     * @param nft - address of NFT
-     * @param isAllowed - boolean (is Allowed)
-     * @dev This method allows the particular NFT contract to be passed as proposed or asked assets for new trades
-     */
-    function updateAllowedNFT(address nft, bool isAllowed) external onlyOwner {
-        _updateAllowedNFT(nft, isAllowed);
-    }
-
-    /**
-     * @notice allows all EIP20 tokens for new trades
-     * @dev This method allows all the EIP20 tokens contracts to be passed as proposed or asked assets for new trades
-     */
-    function toggleAnyEIP20Allowed() external onlyOwner {
-        isAnyEIP20Allowed = !isAnyEIP20Allowed;
-        emit UpdateIsAnyEIP20Allowed(isAnyEIP20Allowed);
-    }
-
-    /**
-     * @notice allows particular EIP20 tokens for new trades
-     * @param tokens - addresses of tokens
-     * @param states - booleans (is Allowed)
-     * @dev This method allows the particular EIP20 tokens contracts to be passed as proposed or asked assets for new trades
-     */
-    function updateAllowedEIP20Tokens(
-        address[] calldata tokens,
-        bool[] calldata states
-    ) external onlyOwner {
-        _updateAllowedEIP20Tokens(tokens, states);
-    }
-
-    /**
-     * @notice Rescues particular EIP20 token`s amount from contract to some address
-     * @param to - address of recepient
-     * @param tokenAddress - address of token
-     * @param amount - amount of token to be withdraw
-     */
-    function rescueEIP20(address to, address tokenAddress, uint256 amount) external onlyOwner whenPaused {
-        require(to != address(0), "NimbusP2P_V2: Cannot rescue to the zero address");
-        require(amount > 0, "NimbusP2P_V2: Cannot rescue 0");
-        emit RescueToken(to, address(tokenAddress), amount);
-        TransferHelper.safeTransfer(tokenAddress, to, amount);
-    }
-
-    /**
-     * @notice Rescues particular NFT by Id from contract to some address
-     * @param to - address of recepient
-     * @param tokenAddress - address of NFT
-     * @param tokenId - id of token to be withdraw
-     */
-    function rescueEIP721(address to, address tokenAddress, uint256 tokenId) external onlyOwner whenPaused {
-        require(to != address(0), "NimbusP2P_V2: Cannot rescue to the zero address");
-        emit RescueToken(to, address(tokenAddress), tokenId);
-        IEIP721(tokenAddress).safeTransferFrom(address(this), to, tokenId);
-    }
-
-    /**
      * @notice requires NFT to be allowed 
-     * @param nftContract - nftContract to check for allowance
+     * @param nftContract nftContract address to check for allowance
      */
     function _requireAllowedNFT(address nftContract) private view {
         require(isAnyNFTAllowed || allowedNFT[nftContract], "NimbusP2P_V2: Not allowed NFT");
@@ -858,7 +918,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice requires EIP20 token to be allowed 
-     * @param tokenContract - tokenContract to check for allowance
+     * @param tokenContract  tokenContract to check for allowance
      */
     function _requireAllowedEIP20(address tokenContract) private view {
         require(isAnyEIP20Allowed || allowedEIP20[tokenContract], "NimbusP2P_V2: Not allowed EIP20 Token");
@@ -866,14 +926,14 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Creates new trade
-     * @param proposedAsset - proposed asset contract address
-     * @param proposedAmount - proposed amount
-     * @param proposedTokenId - proposed asset token Id
-     * @param askedAsset - asked asset contract address
-     * @param askedAmount - asked amount
-     * @param askedTokenId - asked asset token Id
-     * @param deadline - the expiration date of the trade
-     * @param isNFTAskedAsset - whether asked asset is NFT
+     * @param proposedAsset proposed asset contract address
+     * @param proposedAmount proposed amount
+     * @param proposedTokenId proposed asset token Id
+     * @param askedAsset asked asset contract address
+     * @param askedAmount asked amount
+     * @param askedTokenId asked asset token Id
+     * @param deadline the expiration date of the trade
+     * @param isNFTAskedAsset whether asked asset is NFT
      * @dev This method makes it possible to create a trade.
         You can only exchange tokens allowed on the platform.
      */
@@ -902,19 +962,20 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         trade.deadline = deadline;
         if (isNFTAskedAsset) trade.isAskedAssetNFT = true; 
         emit NewTradeSingle(msg.sender, proposedAsset, proposedAmount, proposedTokenId, askedAsset, askedAmount, askedTokenId, deadline, tradeId);
-        _userTrades[msg.sender].push(tradeId);
+        _userTrades[msg.sender].push(tradeId);        
+      
     }
 
     /**
      * @notice Creates new trade
-     * @param proposedAssets - proposed assets contract addresses
-     * @param proposedAmount - proposed amount
-     * @param proposedTokenIds - proposed assets token Ids
-     * @param askedAssets - asked assets contract addresses
-     * @param askedAmount - asked amount
-     * @param askedTokenIds - asked assets token Ids
-     * @param deadline - the expiration date of the trade
-     * @param isNFTsAskedAsset - whether asked asset is NFT
+     * @param proposedAssets proposed assets contract addresses
+     * @param proposedAmount proposed amount
+     * @param proposedTokenIds proposed assets token Ids
+     * @param askedAssets asked assets contract addresses
+     * @param askedAmount asked amount
+     * @param askedTokenIds asked assets token Ids
+     * @param deadline the expiration date of the trade
+     * @param isNFTsAskedAsset  whether asked asset is NFT
      * @dev This method makes it possible to create a trade.
         You can only exchange tokens allowed on the platform.
      */
@@ -950,7 +1011,7 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice Matches the trade by its id
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      * @dev This method accepts tradeId and supports this trade. 
         As a result of work of this method from a wallet the assked asset on a wallet of the creator of trade is sent.
         This is a method of supporting single trades.
@@ -969,11 +1030,12 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         
         tradesSingle[tradeId].counterparty = msg.sender;
         tradesSingle[tradeId].status = 1;
+      
     }
 
     /**
      * @notice Matches the multi trade by its id
-     * @param tradeId - unique trade identifier
+     * @param tradeId unique trade identifier
      * @dev This method accepts tradeId and supports this trade. 
         As a result of work of this method from a wallet the assked asset on a wallet of the creator of trade is sent.
         This is a method of supporting multi trades.
@@ -996,11 +1058,11 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
         tradesMulti[tradeId].counterparty = msg.sender;
         tradesMulti[tradeId].status = 1;
     }
-    
+
     /**
      * @notice allows particular NFT for new trades
-     * @param nft - address of NFT
-     * @param isAllowed - boolean (is Allowed)
+     * @param nft address of NFT
+     * @param isAllowed  boolean (is Allowed)
      * @dev This method allows the particular NFT contract to be passed as proposed or asked assets for new trades
      */
     function _updateAllowedNFT(address nft, bool isAllowed) private {
@@ -1011,8 +1073,8 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice allows particular NFTs for new trades
-     * @param nfts - addresses of NFTs
-     * @param states - booleans (is Allowed)
+     * @param nfts addresses of NFTs
+     * @param states booleans (is Allowed)
      * @dev This method allows the particular NFTs contracts to be passed as proposed or asked assets for new trades
      */
     function _updateAllowedNFTs(
@@ -1030,8 +1092,8 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice allows particular EIP20 token contract for new trades
-     * @param token - address of token
-     * @param isAllowed - boolean (is Allowed)
+     * @param token address of token
+     * @param isAllowed boolean (is Allowed)
      * @dev This method allows the particular EIP20 contract to be passed as proposed or asked assets for new trades
      */
     function _updateAllowedEIP20Token(address token, bool isAllowed) private {
@@ -1042,8 +1104,8 @@ contract NimbusP2P_V2 is NimbusP2P_V2Storage, IERC721Receiver {
 
     /**
      * @notice allows particular EIP20 tokens for new trades
-     * @param tokens - addresses of tokens
-     * @param states - booleans (is Allowed)
+     * @param tokens addresses of tokens
+     * @param states booleans (is Allowed)
      * @dev This method allows the particular EIP20 tokens contracts to be passed as proposed or asked assets for new trades
      */
     function _updateAllowedEIP20Tokens(
