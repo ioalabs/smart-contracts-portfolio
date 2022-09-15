@@ -1,4 +1,4 @@
-const { signDaiPermit, signERC2612Permit } = require("../utils/eth-permit");
+const { signDaiPermit, signERC2612Permit } = require("../../utils/eth-permit");
 const { splitSignature } = require('ethers/lib/utils');
 const { BigNumberish, constants, Signature, Wallet } = require('ethers');
 const { expect } = require("chai");
@@ -10,7 +10,7 @@ describe("Test P2P for NFT Contract", function () {
     beforeEach(async function () {
         [owner, other, user2, ...accounts] = await ethers.getSigners();
 
-        WBNB = await ethers.getContractFactory("NBU_WBNB")
+        WBNB = await ethers.getContractFactory("contracts/mocks/MockForP2P/NBU_WBNB.sol:NBU_WBNB")
         WbnbContract = await WBNB.deploy();
         await WbnbContract.deployed()
 
@@ -18,11 +18,11 @@ describe("Test P2P for NFT Contract", function () {
         BusdContract = await BUSD.deploy();
         await BusdContract.deployed()
 
-        NBU = await ethers.getContractFactory("NBU")
+        NBU = await ethers.getContractFactory("contracts/mocks/MockForP2P/NBU.sol:NBU")
         NBUContract = await NBU.deploy();
         await NBUContract.deployed()
 
-        NBU2 = await ethers.getContractFactory("NBU")
+        NBU2 = await ethers.getContractFactory("contracts/mocks/MockForP2P/NBU.sol:NBU")
         NBU2Contract = await NBU.deploy();
         await NBU2Contract.deployed()
 
