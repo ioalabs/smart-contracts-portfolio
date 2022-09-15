@@ -9,3 +9,8 @@
 6. Router 0x05f6bb6b96ca657a3666d2f1bca302b999a671b4
 7. Initial 0xEEA92913d8AA554a102ED5B4F0A6206E6D8d59D5
 8. Influencers 0x972e54dD21661819AD2E85868B9E6e584D982f4F
+
+
+# Run Hardhat Tests
+## P2P
+`npx hardhat test test/dApps/P2P/*`
