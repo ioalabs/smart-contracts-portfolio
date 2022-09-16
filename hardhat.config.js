@@ -16,7 +16,7 @@ subtask(
       .filter(solidityFilePath => {
         const relativePath = path.relative(config.paths.sources, solidityFilePath)
 
-        return (relativePath.includes('contracts_BSC') || relativePath.includes('mocks')) && relativePath !== "contracts_BSC/Swaps/Factory.sol";
+        return (relativePath.includes('contracts_BSC') || relativePath.includes('mocks')) && !relativePath.includes('Swaps');
       })
   }
 );
