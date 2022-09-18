@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.15;
 import './StakingSetStorage.sol';
+import './IPancakeRouter.sol';
 
 contract StakingSetBusd is StakingSetStorage {
     using AddressUpgradeable for address;
     using StringsUpgradeable for uint256;
     uint256 public constant MULTIPLIER = 1 ether;
-    
+
     function initialize(
         address _nimbusRouter, 
         address _pancakeRouter,
@@ -85,7 +86,6 @@ contract StakingSetBusd is StakingSetStorage {
 
     // ========================== StakingSet functions ==========================
 
-
     function buyStakingSet(uint256 amount, uint256 tokenId) external onlyHub {
       require(amount >= minPurchaseAmount, "StakingSet: Token price is more than sent");
       providedAmount[tokenId] = amount;
@@ -140,7 +140,7 @@ contract StakingSetBusd is StakingSetStorage {
       uint256 swapDeadline = block.timestamp + 1200; // 20 mins
       address[] memory path = new address[](2);
       path[0] = address(busdToken);
-      path[1] = address(binanceBNB);
+      path[1] = pancakeRouter.WETH();
       (uint[] memory amountsBusdBnb) = pancakeRouter.swapExactTokensForETH(amount, 0, path, address(this), swapDeadline);
       amount = amountsBusdBnb[1] * MULTIPLIER;
       
@@ -358,5 +358,9 @@ contract StakingSetBusd is StakingSetStorage {
         require(newAmount > 0, "StakingSet: Amount must be greater than zero");
         minPurchaseAmount = newAmount;
         emit UpdateMinPurchaseAmount(newAmount);
+    }
+
+    function updatePancakeRouter(IPancakeRouter _pancakeRouter) external onlyOwner {
+        pancakeRouter = _pancakeRouter;
     }
 }
