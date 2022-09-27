@@ -57,17 +57,15 @@ contract StakingSetBusd is StakingSetStorage {
         lockTime = 30 days;
         POOLS_NUMBER = 3;
         rewardDuration = IStaking(_NbuStaking).rewardDuration();
-
-        require(IERC20Upgradeable(_nbuToken).approve(_nimbusRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(_gnbuToken).approve(_nimbusRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(_nbuToken).approve(_NbuStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(_gnbuToken).approve(_GnbuStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(_busdToken).approve(_nimbusRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(_busdToken).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-
-        require(IERC20Upgradeable(_lpBnbCake).approve(_CakeStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(_lpBnbCake).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(CakeStaking.CAKE()).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_nbuToken), _nimbusRouter, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_nbuToken), _NbuStaking, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_gnbuToken), _nimbusRouter, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_gnbuToken), _GnbuStaking, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_lpBnbCake), _CakeStaking, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_lpBnbCake), _pancakeRouter, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(CakeStaking.CAKE()), _pancakeRouter, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_busdToken), _nimbusRouter, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_busdToken), _pancakeRouter, type(uint256).max);
     }
 
     receive() external payable {
@@ -351,7 +349,7 @@ contract StakingSetBusd is StakingSetStorage {
         } else {
             allowance = uint256(amount);
         }
-        IERC20Upgradeable(token).approve(spender, allowance);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(token), spender, allowance);
     }
     
     function updateMinPurchaseAmount (uint newAmount) external onlyOwner {

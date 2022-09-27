@@ -55,17 +55,13 @@ contract StakingSet is StakingSetStorage {
 
         rewardDuration = IStaking(_NbuStaking).rewardDuration();
 
-
-        require(IERC20Upgradeable(_nbuToken).approve(_nimbusRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(_gnbuToken).approve(_nimbusRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(_nbuToken).approve(_NbuStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(_gnbuToken).approve(_GnbuStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-
-        require(IERC20Upgradeable(_lpBnbCake).approve(_CakeStaking, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(_lpBnbCake).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-        require(IERC20Upgradeable(CakeStaking.CAKE()).approve(_pancakeRouter, type(uint256).max), "IERC20Upgradeable: APPROVE_FAILED");
-
-
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_nbuToken), _nimbusRouter, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_nbuToken), _NbuStaking, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_gnbuToken), _nimbusRouter, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_gnbuToken), _GnbuStaking, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_lpBnbCake), _CakeStaking, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(_lpBnbCake), _pancakeRouter, type(uint256).max);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(CakeStaking.CAKE()), _pancakeRouter, type(uint256).max);
     }
 
     receive() external payable {
@@ -216,7 +212,10 @@ contract StakingSet is StakingSetStorage {
 
         TransferHelper.safeTransfer(address(nbuToken), tokenOwner, userSupply.NbuStakingAmount);
         TransferHelper.safeTransfer(address(gnbuToken), tokenOwner, userSupply.GnbuStakingAmount);
-        pancakeRouter.removeLiquidityETH(address(cakeToken), userSupply.CakeBnbAmount, 0, 0, tokenOwner, block.timestamp);
+        (uint256 amountCake, uint256 amountBNB) = pancakeRouter.removeLiquidityETH(
+            address(cakeToken), userSupply.CakeBnbAmount, 0, 0, tokenOwner, block.timestamp
+        );
+        require(amountCake > 0 && amountBNB > 0, "StakingSet: liquidity removal failed");
     }
 
     function getTokenRewardsAmounts(uint tokenId) public view returns (uint256 NbuUserRewards, uint256 GnbuUserRewards, uint256 CakeUserRewards) {
@@ -343,7 +342,7 @@ contract StakingSet is StakingSetStorage {
         } else {
             allowance = uint256(amount);
         }
-        IERC20Upgradeable(token).approve(spender, allowance);
+        SafeERC20Upgradeable.safeApprove(IERC20Upgradeable(token), spender, allowance);
     }
     
     function updateMinPurchaseAmount (uint newAmount) external onlyOwner {
