@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 pragma solidity =0.8.0;
 
 
@@ -445,11 +446,15 @@ contract SmartLPProxy is SmartLPStorage {
     }
 }
 
+
 contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
     using Address for address;
     using Strings for uint256;
     
     address public target;
+    uint256 public lockTime;
+
+    mapping(uint256 => bool) public lockEnabled;
 
     function initialize(
         address _swapRouter, 
@@ -553,6 +558,8 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
       weightedStakeDate[tokenCount] = userSupply.SupplyTime;
       _userTokens[msg.sender].push(tokenCount); 
       _mint(msg.sender, tokenCount);
+
+      lockEnabled[tokenCount] = true;
       if (amountBNB > 0) {
           uint256 toSend = amountBNB;
           TransferHelper.safeTransferBNB(msg.sender, toSend);
@@ -572,6 +579,9 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
     function burnSmartLP(uint tokenId) external nonReentrant {
         require(_owners[tokenId] == msg.sender, "SmartLP: Not token owner");
         UserSupply storage userSupply = tikSupplies[tokenId];
+        require(!lockEnabled[tokenId] || block.timestamp > userSupply.SupplyTime + lockTime, 
+            "SmartLP: Token is locked"
+        );
         require(userSupply.IsActive, "SmartLP: Token not active");
         (uint nbuReward, ) = getTotalAmountsOfRewards(tokenId);
         
@@ -878,5 +888,10 @@ contract SmartLP is SmartLPStorage, IBEP721, IBEP721Metadata {
         require(newAmount > 0, "SmartLP: Amount must be greater than zero");
         minPurchaseAmount = newAmount;
         emit UpdateMinPurchaseAmount(newAmount);
+    }
+
+    function updateLockTime(uint256 newLockTime) external onlyOwner {
+        require(newLockTime != lockTime, "SmartLP: Lock time must differ from current");
+        lockTime = newLockTime;
     }
 }
