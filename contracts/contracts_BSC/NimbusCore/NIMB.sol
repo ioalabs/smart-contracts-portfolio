@@ -184,7 +184,7 @@ contract NIMB is IBEP20, Ownable, Pausable {
     }
 
      /**
-     * @dev Mint tokens to receiver address
+     * @dev Mint tokens to receiver address,receive must be an address from the allowedReceivers list
      * @param receiver address receiver
      * @param amount mint amount
      */
@@ -329,7 +329,7 @@ contract NIMB is IBEP20, Ownable, Pausable {
     }
 
      /**
-     * @dev Block addind new receivers
+     * @dev Block addind new receivers,it can be called only once and it will block editing the list
      */
     function lockReceiversList() external onlyOwner {
         receiversListLocked = true;
