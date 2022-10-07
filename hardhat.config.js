@@ -67,7 +67,11 @@ module.exports = {
   },
   defaultNetwork: 'hardhat',
   networks: {
-    hardhat: {},
+    hardhat: {
+      accounts: {
+        count: 120
+      }
+    },
     // testnet: {
     //   url: BSC_TESTNET,
     //   chainId: 97,

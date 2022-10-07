@@ -1,4 +1,3 @@
-const GNBU = artifacts.require("./NimbusCore/GNBU.sol");
 const {
   BN,
   constants,
@@ -6,15 +5,22 @@ const {
   expectRevert,
   time,
 } = require("@openzeppelin/test-helpers");
-const { expect } = require("chai");
+
 const { ZERO_ADDRESS } = constants;
 const timeHelper = require("../utils/timeHelpers");
 const { DAY, ZERO } = require("../utils/constants");
 const { utils } = require("ethers");
 const { keccak256, toUtf8Bytes } = utils;
 
-contract("GNBU", (accounts) => {
-  const [initialHolder, recipient, anotherAccount] = accounts;
+const { expect } = require("chai");
+const { ethers, upgrades, waffle, network } = require("hardhat");
+// const { both, increaseTime, mineBlock } = require("./Utils");
+// const { time } = require("@nomicfoundation/hardhat-network-helpers");
+
+let initialHolder, recipient, anotherAccount
+
+describe("GNBU", (accounts) => {
+  // [owner, other, user2, ...accounts] = await ethers.getSigners();
 
   const name = "Nimbus Governance Token";
   const symbol = "GNBU";
@@ -22,9 +28,12 @@ contract("GNBU", (accounts) => {
   const initialSupply = new BN(10).pow(new BN(26));
 
   beforeEach(async function () {
-    this.token = await GNBU.new();
+    [initialHolder, recipient, anotherAccount] = await ethers.getSigners();
+    GNBU = await ethers.getContractFactory("GNBU")
+    this.token = await GNBU.deploy();
   });
 
+  // Mike
   describe("core", function () {
     it("has a name", async function () {
       expect(await this.token.name()).to.equal(name);
@@ -35,31 +44,33 @@ contract("GNBU", (accounts) => {
     });
 
     it("has 18 decimals", async function () {
-      expect(await this.token.decimals()).to.be.bignumber.equal("18");
+      const decimals = await this.token.decimals();
+
+      expect(decimals.toString()).to.be.bignumber.equal("18");
     });
 
-    describe("total supply", function () {
+    describe("total supply", async function () {
       it("returns the total amount of tokens", async function () {
-        expect(await this.token.totalSupply()).to.be.bignumber.equal(
-          initialSupply
-        );
+        const totalSupply = await this.token.totalSupply();
+
+        expect(totalSupply.toString()).to.be.bignumber.equal(initialSupply.toString());
       });
     });
 
     describe("balanceOf", function () {
       describe("when the requested account has no tokens", function () {
         it("returns zero", async function () {
-          expect(
-            await this.token.balanceOf(anotherAccount)
-          ).to.be.bignumber.equal("0");
+          const balance = await this.token.balanceOf(anotherAccount.address);
+
+          expect(balance.toString()).to.be.bignumber.equal("0");
         });
       });
 
       describe("when the requested account has some tokens", function () {
         it("returns the total amount of tokens", async function () {
-          expect(
-            await this.token.balanceOf(initialHolder)
-          ).to.be.bignumber.equal(initialSupply);
+          const balance = await this.token.balanceOf(initialHolder.address);
+
+          expect(balance.toString()).to.be.bignumber.equal(initialSupply.toString());
         });
       });
     });
@@ -101,10 +112,10 @@ contract("GNBU", (accounts) => {
         const amount = initialSupply.addn(1);
 
         it("reverts", async function () {
-          await expectRevert(
-            this.token.transfer(recipient, amount, { from: initialHolder }),
-            "GNBU::_transferTokens: transfer amount exceeds balance"
-          );
+          let transferTx = this.token.transfer(recipient.address, amount.toString(), { from: initialHolder.address });
+
+          await expect(transferTx)
+              .to.be.revertedWith("GNBU::_transferTokens: transfer amount exceeds balance")
         });
       });
 
@@ -112,27 +123,23 @@ contract("GNBU", (accounts) => {
         const amount = initialSupply;
 
         it("transfers the requested amount", async function () {
-          await this.token.transfer(recipient, amount, { from: initialHolder });
+          await this.token.transfer(recipient.address, amount.toString(), { from: initialHolder.address });
 
-          expect(
-            await this.token.balanceOf(initialHolder)
-          ).to.be.bignumber.equal("0");
+          const balance = await this.token.balanceOf(initialHolder.address);
+          expect(balance.toString()).to.be.bignumber.equal("0");
 
-          expect(await this.token.balanceOf(recipient)).to.be.bignumber.equal(
-            amount
-          );
+          const balanceRecipient = await this.token.balanceOf(recipient.address);
+          expect(balanceRecipient.toString()).to.be.bignumber.equal(amount.toString());
         });
 
         it("emits a transfer event", async function () {
-          const { logs } = await this.token.transfer(recipient, amount, {
-            from: initialHolder,
+          const transferTx = await this.token.transfer(recipient.address, amount.toString(), {
+            from: initialHolder.address,
           });
 
-          expectEvent.inLogs(logs, "Transfer", {
-            from: initialHolder,
-            to: recipient,
-            amount,
-          });
+          await expect(transferTx)
+              .to.be.emit(this.token, "Transfer")
+              .withArgs(initialHolder.address, recipient.address, amount)
         });
       });
 
@@ -140,56 +147,56 @@ contract("GNBU", (accounts) => {
         const amount = new BN("0");
 
         it("transfers the requested amount", async function () {
-          await this.token.transfer(recipient, amount, { from: initialHolder });
+          await this.token.transfer(recipient.address, amount.toString(), { from: initialHolder.address });
 
-          expect(
-            await this.token.balanceOf(initialHolder)
-          ).to.be.bignumber.equal(initialSupply);
+          const balance = await this.token.balanceOf(initialHolder.address);
+          expect(balance.toString()).to.be.bignumber.equal(initialSupply.toString());
 
-          expect(await this.token.balanceOf(recipient)).to.be.bignumber.equal(
-            "0"
-          );
+          const balanceRecipient = await this.token.balanceOf(recipient.address);
+          expect(balanceRecipient.toString()).to.be.bignumber.equal("0");
         });
 
         it("emits a transfer event", async function () {
-          const { logs } = await this.token.transfer(recipient, amount, {
-            from: initialHolder,
+          const transferTx = await this.token.transfer(recipient.address, amount.toString(), {
+            from: initialHolder.address,
           });
 
-          expectEvent.inLogs(logs, "Transfer", {
-            from: initialHolder,
-            to: recipient,
-            amount,
-          });
+          expect(transferTx)
+              .to.emit(this.token, "Transfer")
+              .withArgs(initialHolder.address, recipient.address. amount)
         });
       });
     });
 
     describe("when the recipient is the zero address", function () {
       it("reverts", async function () {
-        await expectRevert(
-          this.token.transfer(ZERO_ADDRESS, initialSupply, {
-            from: initialHolder,
-          }),
-          "GNBU::_transferTokens: cannot transfer to the zero address"
-        );
+        const transferTx = this.token.transfer(ZERO_ADDRESS, initialSupply.toString(), {
+          from: initialHolder.address,
+        })
+        await expect(transferTx).to.be.revertedWith("GNBU::_transferTokens: cannot transfer to the zero address")
       });
     });
   });
 
   describe("transfer from", function () {
-    const spender = recipient;
+    let spender;
+    let tokenOwner;
+    let to;
+
+    beforeEach(function() {
+      spender = recipient;
+      tokenOwner = initialHolder;
+      to = anotherAccount;
+    })
 
     describe("when the token owner is not the zero address", function () {
-      const tokenOwner = initialHolder;
 
       describe("when the recipient is not the zero address", function () {
-        const to = anotherAccount;
 
         describe("when the spender has enough approved balance", function () {
           beforeEach(async function () {
-            await this.token.approve(spender, initialSupply, {
-              from: initialHolder,
+            await this.token.approve(spender.address, initialSupply.toString(), {
+              from: initialHolder.address,
             });
           });
 
@@ -197,57 +204,46 @@ contract("GNBU", (accounts) => {
             const amount = initialSupply;
 
             it("transfers the requested amount", async function () {
-              await this.token.transferFrom(tokenOwner, to, amount, {
-                from: spender,
-              });
+              await this.token.connect(spender).transferFrom(tokenOwner.address, to.address, amount.toString());
 
-              expect(
-                await this.token.balanceOf(tokenOwner)
-              ).to.be.bignumber.equal("0");
+              const balance = await this.token.balanceOf(tokenOwner.address);
+              expect(balance.toString()).to.be.bignumber.equal("0");
 
-              expect(await this.token.balanceOf(to)).to.be.bignumber.equal(
-                amount
-              );
+              const balanceTo = await this.token.balanceOf(to.address)
+              expect(balanceTo.toString()).to.be.bignumber.equal(amount.toString());
             });
 
             it("decreases the spender allowance", async function () {
-              await this.token.transferFrom(tokenOwner, to, amount, {
-                from: spender,
-              });
+              await this.token.connect(spender).transferFrom(tokenOwner.address, to.address, amount.toString());
 
-              expect(
-                await this.token.allowance(tokenOwner, spender)
-              ).to.be.bignumber.equal("0");
+              const allowance = await this.token.allowance(tokenOwner.address, spender.address)
+              expect(allowance.toString()).to.be.bignumber.equal("0");
             });
 
             it("emits a transfer event", async function () {
-              const { logs } = await this.token.transferFrom(
-                tokenOwner,
-                to,
-                amount,
-                { from: spender }
+              const transferFromTx = await this.token.connect(spender).transferFrom(
+                tokenOwner.address,
+                to.address,
+                amount.toString(),
               );
 
-              expectEvent.inLogs(logs, "Transfer", {
-                from: tokenOwner,
-                to: to,
-                amount,
-              });
+              expect(transferFromTx)
+                  .to.emit("Transfer")
+                  .withArgs(tokenOwner.address, to.address, amount)
             });
 
             it("emits an approval event", async function () {
-              const { logs } = await this.token.transferFrom(
-                tokenOwner,
-                to,
-                amount,
-                { from: spender }
+              const transferFromTx = await this.token.connect(spender).transferFrom(
+                tokenOwner.address,
+                to.address,
+                amount.toString(),
               );
 
-              expectEvent.inLogs(logs, "Approval", {
-                owner: tokenOwner,
-                spender: spender,
-                amount: await this.token.allowance(tokenOwner, spender),
-              });
+              const allowance = await this.token.allowance(tokenOwner.address, spender.address);
+
+              expect(transferFromTx)
+                  .to.emit("Approval")
+                  .withArgs(tokenOwner.address, spender.address, allowance)
             });
           });
 
@@ -255,33 +251,31 @@ contract("GNBU", (accounts) => {
             const amount = initialSupply.addn(1);
 
             it("reverts", async function () {
-              await expectRevert(
-                this.token.transferFrom(tokenOwner, to, amount, {
-                  from: spender,
-                }),
-                `GNBU::transferFrom: transfer amount exceeds spender allowance`
-              );
+              const transferFromTx = this.token.connect(spender).transferFrom(
+                  tokenOwner.address,
+                  to.address,
+                  amount.toString(),
+              )
+
+              await expect(transferFromTx)
+                  .to.be.revertedWith("GNBU::transferFrom: transfer amount exceeds spender allowance")
             });
           });
         });
 
         describe("when the spender does not have enough approved balance", function () {
           beforeEach(async function () {
-            await this.token.approve(spender, initialSupply.subn(1), {
-              from: tokenOwner,
-            });
+            await this.token.connect(tokenOwner).approve(spender.address, initialSupply.subn(1).toString());
           });
 
           describe("when the token owner has enough balance", function () {
             const amount = initialSupply;
 
             it("reverts", async function () {
-              await expectRevert(
-                this.token.transferFrom(tokenOwner, to, amount, {
-                  from: spender,
-                }),
-                `GNBU::transferFrom: transfer amount exceeds spender allowance`
-              );
+              const transferFromTx = this.token.connect(spender).transferFrom(tokenOwner.address, to.address, amount.toString());
+
+              await expect(transferFromTx)
+                  .to.be.revertedWith("GNBU::transferFrom: transfer amount exceeds spender allowance")
             });
           });
 
@@ -289,12 +283,10 @@ contract("GNBU", (accounts) => {
             const amount = initialSupply.addn(1);
 
             it("reverts", async function () {
-              await expectRevert(
-                this.token.transferFrom(tokenOwner, to, amount, {
-                  from: spender,
-                }),
-                `GNBU::transferFrom: transfer amount exceeds spender allowance`
-              );
+              const transferFromTx = this.token.connect(spender).transferFrom(tokenOwner.address, to.address, amount.toString())
+
+              await expect(transferFromTx)
+                  .to.be.revertedWith("GNBU::transferFrom: transfer amount exceeds spender allowance");
             });
           });
         });
@@ -305,14 +297,14 @@ contract("GNBU", (accounts) => {
         const to = ZERO_ADDRESS;
 
         beforeEach(async function () {
-          await this.token.approve(spender, amount, { from: tokenOwner });
+          await this.token.approve(spender.address, amount.toString(), { from: tokenOwner.address });
         });
 
         it("reverts", async function () {
-          await expectRevert(
-            this.token.transferFrom(tokenOwner, to, amount, { from: spender }),
-            `GNBU::_transferTokens: cannot transfer to the zero address`
-          );
+          const transferFromTx = this.token.connect(spender).transferFrom(tokenOwner.address, to, amount.toString());
+
+          await expect(transferFromTx)
+              .to.be.revertedWith("GNBU::_transferTokens: cannot transfer to the zero address")
         });
       });
     });
@@ -320,17 +312,17 @@ contract("GNBU", (accounts) => {
     describe("when the token owner is the zero address", function () {
       const amount = 0;
       const tokenOwner = ZERO_ADDRESS;
-      const to = recipient;
 
       it("reverts", async function () {
-        await expectRevert(
-          this.token.transferFrom(tokenOwner, to, amount, { from: spender }),
-          `GNBU::_transferTokens: cannot transfer from the zero address`
-        );
+        const transferFromTx = this.token.connect(spender).transferFrom(tokenOwner, to.address, amount.toString())
+
+        await expect(transferFromTx)
+            .to.be.revertedWith("GNBU::_transferTokens: cannot transfer from the zero address")
       });
     });
   });
 
+  // Zakhar
   describe("approve", function () {
     describe("when the spender is not the zero address", function () {
       describe("when the sender has enough balance", function () {
@@ -544,6 +536,7 @@ contract("GNBU", (accounts) => {
     });
   });
 
+  // Yehor
   describe("unvest", function () {
     const vester = initialHolder;
     const client = recipient;
@@ -601,8 +594,9 @@ contract("GNBU", (accounts) => {
     });
   });
 
-  describe("multivest", function () {
-    const [owner, ...users] = accounts;
+  describe("multivest", async function () {
+    // const [owner, ...users] = accounts;
+    [owner, ...users] = await ethers.getSigners();
     const amount = new BN("152");
     it("when spender is not owner", async function () {
       await expectRevert(
@@ -674,8 +668,8 @@ contract("GNBU", (accounts) => {
     });
   });
 
-  describe("multisend", function () {
-    const [owner, ...users] = accounts;
+  describe("multisend", async function () {
+    [owner, ...users] = await ethers.getSigners();
     const value = new BN("152");
     it("when spender is not owner", async function () {
       await expectRevert(
@@ -908,7 +902,7 @@ contract("GNBU", (accounts) => {
   });
 
   describe("freeCirculation and supportUnits", function () {
-    const supportUnits = [accounts[8], accounts[9]];
+    const supportUnits = [initialHolder, recipient];
     const transferAmount = new BN(10000);
     it("freeCirculation", async function () {
       expect(await this.token.freeCirculation()).to.be.bignumber.equal(ZERO);
