@@ -1,8 +1,10 @@
+
 const { signDaiPermit, signERC2612Permit } = require("../../utils/eth-permit");
 const { splitSignature } = require('ethers/lib/utils');
 const { BigNumberish, constants, Signature, Wallet } = require('ethers');
 const { expect } = require("chai");
 const { ethers, upgrades, waffle } = require("hardhat");
+const { both, increaseTime, mineBlock } = require("./../Utils");
 
 describe("Converter PriceFeed test", function () {
 
@@ -26,7 +28,7 @@ describe("Converter PriceFeed test", function () {
         await NBU2Contract.deployed()
 
         Converter = await ethers.getContractFactory("Converter")
-        ConverterContract = await Converter.deploy(NBUContract.address, NBU2Contract.address);
+        ConverterContract = await Converter.deploy(NBUContract.address, NBU2Contract.address,owner.address);
         await ConverterContract.deployed()
 
         PriceFeeds = await ethers.getContractFactory("PriceFeeds")
@@ -63,7 +65,6 @@ describe("Converter PriceFeed test", function () {
         await NBUContract.connect(owner).transfer(other.address, "1000000000000000000000")
         await NBUContract.connect(other).approve(ConverterContract.address, "1000000000000000000000")
         await ConverterContract.connect(other).convert("1000000000000000000000")
-        expect(await ConverterContract.purchaseTokenSupply()).to.equal("1000000000000000000000");
         expect(await ConverterContract.receiveTokenSupply()).to.equal("0");
     });
     it("Test Pause ", async function () {
@@ -74,7 +75,6 @@ describe("Converter PriceFeed test", function () {
         await expect(ConverterContract.connect(other).convert("1000000000000000000000")).to.be.revertedWith('Pausable: paused');
         await ConverterContract.connect(owner).setPaused(false)
         await ConverterContract.connect(other).convert("1000000000000000000000")
-        expect(await ConverterContract.purchaseTokenSupply()).to.equal("1000000000000000000000");
         expect(await ConverterContract.receiveTokenSupply()).to.equal("0");
     });
 
@@ -98,6 +98,27 @@ describe("Converter PriceFeed test", function () {
         const DIv2 = (LatestAnswer1).mul("1000000000000000000").div(LatestAnswer2)
         expect(DIv2.toString()).to.equals(getEquivalentAmount.toString());
         console.log((123), LatestAnswer2.toString(), LatestAnswer1.toString(), LatestAnswer2.div(LatestAnswer1).toString(), getEquivalentAmount.toString(), Div.toString(), DIv2.toString())
+    });
+    it("Test Rescue ERC20 Tokens  ", async function () {
+        await NBU2Contract.connect(owner).transfer(ConverterContract.address, "1000000000000000000000")
+        await ConverterContract.rescueERC20(other.address, NBU2Contract.address, "1000000000000000000000")
+        expect(await NBU2Contract.balanceOf(ConverterContract.address)).to.equal("0");
+        expect(await NBU2Contract.balanceOf(other.address)).to.equal("1000000000000000000000");
+    });
+    it("setManualRate", async function () {
+        await NBU2Contract.connect(owner).transfer(ConverterContract.address, "1000000000000000000")
+        await NBUContract.connect(owner).transfer(other.address, "1000000000000000000")
+        await NBUContract.connect(other).approve(ConverterContract.address, "1000000000000000000")
+        await ConverterContract.connect(other).convert("1000000000000000000")
+        expect(await ConverterContract.receiveTokenSupply()).to.equal("0");
+
+        await ConverterContract.connect(owner).setManualRate("2000000000000000000")
+        
+        await NBU2Contract.connect(owner).transfer(ConverterContract.address, "4000000000000000000")
+        await NBUContract.connect(owner).transfer(other.address, "1000000000000000000")
+        await NBUContract.connect(other).approve(ConverterContract.address, "1000000000000000000")
+        await ConverterContract.connect(other).convert("1000000000000000000")
+        expect(await ConverterContract.receiveTokenSupply()).to.equal("2000000000000000000");
     });
 
 });
