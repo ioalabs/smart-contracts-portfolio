@@ -11,13 +11,13 @@ const ver = async function verifyContracts(address, arguments) {
 
 async function main() {
     const [deployer] = await hre.ethers.getSigners();
-    const Contract = await hre.ethers.getContractFactory('GNIMB');
+    const Contract = await hre.ethers.getContractFactory('Nimbus_DAO');
     let contract = await Contract.deploy(
     );
 
     const contractNew = await contract.deployed()
 
-    console.log(`GNIMB deployed: ${contractNew.address} by ${deployer.address}`);
+    console.log(`Nimbus_DAO deployed: ${contractNew.address} by ${deployer.address}`);
 
     console.log('Verifying contracts...')
     await ver(contractNew.address, [

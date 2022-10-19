@@ -46,6 +46,15 @@ module.exports = {
         },
       },
       {
+        version: '0.8.9',
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
+      },
+      {
         version: '0.8.7',
         settings: {
           optimizer: {
@@ -72,13 +81,13 @@ module.exports = {
         count: 120
       }
     },
-    // testnet: {
-    //   url: BSC_TESTNET,
-    //   chainId: 97,
-    //   gasPrice: 16000000000,
-    //   gas: 2100000,
-    //   accounts: [BSC_PRIVATE_KEY],
-    // },
+    testnet: {
+      url: BSC_TESTNET,
+      chainId: 97,
+      gasPrice: 16000000000,
+      gas: 2100000,
+      accounts: [BSC_PRIVATE_KEY],
+    },
     // mainnet: {
     //   url: BSC_MAINNET,
     //   chainId: 56,
@@ -86,13 +95,13 @@ module.exports = {
     //   accounts: [BSC_PRIVATE_KEY],
     // },
   },
-  // etherscan: {
-  //   apiKey: {
-  //     // binance smart chain
-  //     bsc: BSCSCANAPIKEY_API_KEY,
-  //     bscTestnet: BSCSCANAPIKEY_API_KEY,
-  //   },
-  // },
+  etherscan: {
+    apiKey: {
+      // binance smart chain
+      bsc: BSCSCANAPIKEY_API_KEY,
+      bscTestnet: BSCSCANAPIKEY_API_KEY,
+    },
+  },
   docgen: {
     pages: 'files',
     exclude: ['Stakings', 'Test']
