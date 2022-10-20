@@ -230,7 +230,7 @@ interface IBEP20Permit {
 contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pausable {
     using SafeBEP20 for IBEP20;
 
-    IBEP20 public immutable rewardsToken;
+    IBEP20 public rewardsToken;
     IBEP20 public immutable stakingToken;
     INimbusRouter public swapRouter;
     uint256 public rewardRate; 
@@ -247,6 +247,7 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         uint256 stakingTokenAmount;
         uint256 rewardsTokenAmount;
         uint256 rewardRate;
+        address rewardsToken;
     }
 
     struct APYCheckpoint {
@@ -303,7 +304,7 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
     }
 
     function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
-        return stakeNonceInfos[account][nonce].rewardsTokenAmount * 
+        return getTokenAmountForToken(stakeNonceInfos[account][nonce].rewardsToken, address(rewardsToken), stakeNonceInfos[account][nonce].rewardsTokenAmount) * 
             (block.timestamp - stakeNonceInfos[account][nonce].stakeTime) *
              stakeNonceInfos[account][nonce].rewardRate / (100 * rewardDuration);
     }
@@ -345,6 +346,7 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         stakeNonceInfos[user][stakeNonce].stakeTime = block.timestamp;
         stakeNonceInfos[user][stakeNonce].rewardRate = rewardRate;
         stakeNonceInfos[user][stakeNonce].rewardsTokenAmount = amountRewardEquivalent;
+        stakeNonceInfos[user][stakeNonce].rewardsToken = address(rewardsToken);
         _balancesRewardEquivalent[user] += amountRewardEquivalent;
         emit Staked(user, amount);
     }
@@ -395,19 +397,23 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         withdraw(nonce);
     }
 
-    function getEquivalentAmount(uint amount) public view returns (uint) {
+    function getTokenAmountForToken(address tokenSrc, address tokenDest, uint tokenAmount) public view returns (uint) { 
+        if (tokenSrc == tokenDest) return tokenAmount;
+        if (usePriceFeeds && address(priceFeed) != address(0)) {
+            (uint256 rate, uint256 precision) = priceFeed.queryRate(tokenSrc, tokenDest);
+            return tokenAmount * rate / precision;
+        } 
         address[] memory path = new address[](2);
+        path[0] = tokenSrc;
+        path[1] = tokenDest;
+        return swapRouter.getAmountsOut(tokenAmount, path)[1];
+    }
 
+
+    function getEquivalentAmount(uint amount) public view returns (uint) {
         uint equivalent;
         if (stakingToken != rewardsToken) {
-             if (usePriceFeeds && address(priceFeed) != address(0)) {
-                (uint256 rate, uint256 precision) = priceFeed.queryRate(address(stakingToken), address(rewardsToken));
-                equivalent = amount * rate / precision;
-            } else {
-                path[0] = address(stakingToken);            
-                path[1] = address(rewardsToken);
-                equivalent = swapRouter.getAmountsOut(amount, path)[1];
-            }
+            equivalent = getTokenAmountForToken(address(stakingToken), address(rewardsToken), amount);
         } else {
             equivalent = amount;   
         }
@@ -431,6 +437,11 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         swapRouter = INimbusRouter(newSwapRouter);
     }
 
+    function updateRewardsToken(address newRewardsToken) external onlyOwner {
+        require(Address.isContract(newRewardsToken), "StakingRewardFixedAPY: Address is zero");
+        rewardsToken = IBEP20(newRewardsToken);
+    }
+
     function updatePriceFeed(address newPriceFeed) external onlyOwner {
         require(newPriceFeed != address(0), "StakingRewardFixedAPY: Address is zero");
         priceFeed = IPriceFeed(newPriceFeed);
@@ -444,9 +455,7 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
     function rescue(address to, address token, uint256 amount) external onlyOwner whenPaused {
         require(to != address(0), "StakingRewardFixedAPY: Cannot rescue to the zero address");
         require(amount > 0, "StakingRewardFixedAPY: Cannot rescue 0");
-        require(token != address(stakingToken), "StakingRewardFixedAPY: Cannot rescue staking token");
-        //owner can rescue rewardsToken if there is spare unused tokens on staking contract balance
-
+        
         IBEP20(token).safeTransfer(to, amount);
         emit RescueToken(to, address(token), amount);
     }
