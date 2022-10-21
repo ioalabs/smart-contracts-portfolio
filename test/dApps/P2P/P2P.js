@@ -10,7 +10,7 @@ describe("Test P2P for NFT Contract", function () {
     beforeEach(async function () {
         [owner, other, user2, ...accounts] = await ethers.getSigners();
 
-        WBNB = await ethers.getContractFactory("contracts/mocks/MockForP2P/NBU_WBNB.sol:NBU_WBNB")
+        WBNB = await ethers.getContractFactory("NBU_WBNB")
         WbnbContract = await WBNB.deploy();
         await WbnbContract.deployed()
 
@@ -54,14 +54,10 @@ describe("Test P2P for NFT Contract", function () {
 
     });
 
-    it("Any NFT should be allowed after publish", async function () {
-        expect(await p2pContract.isAnyNFTAllowed()).to.equal(false);
-    });
-
     it("Should process trade EIP20 to BNB", async function () {
         const curTimestamp = (await ethers.provider.getBlock(await ethers.provider.getBlockNumber())).timestamp;
         const provider = waffle.provider;
-        await p2pContract.toggleAnyEIP20Allowed()
+        await p2pContract.updateAllowedEIP20Tokens([BusdContract.address, WbnbContract.address], [true, true])
         await BusdContract.approve(p2pContract.address, "100000000000000000000000000000000000");
 
         await p2pContract.createTradeEIP20ToEIP20(BusdContract.address, "1000000000000000000", WbnbContract.address, "10000000000000000000", curTimestamp + 100)
@@ -217,17 +213,6 @@ describe("Test P2P for NFT Contract", function () {
         const tradeId = 1;
 
         await p2pContract.connect(owner).supportTradeSingleWithPermit(tradeId, curTimestamp + 100, result.v, result.r, result.s)
-    });
-
-    it("toggleAnyNFTAllowed", async function () {
-        const curTimestamp = (await ethers.provider.getBlock(await ethers.provider.getBlockNumber())).timestamp;
-        await p2pContract.connect(owner).toggleAnyNFTAllowed()
-        expect(await p2pContract.allowedNFT(SmartLpContract.address)).to.equal(false);
-        await p2pContract.connect(owner).toggleAnyNFTAllowed()
-        await BusdContract.connect(owner).approve(SmartLpContract.address, "10000000000000000000");
-        await SmartLpContract.connect(owner).buySmartLPforToken("10000000000000000000");
-        await SmartLpContract.connect(owner).approve(p2pContract.address, 1);
-        await expect( p2pContract.createTradeNFTtoEIP20(SmartLpContract.address, "1", NBUContract.address, "10000000000000000000", curTimestamp + 100)).to.be.revertedWith("NimbusP2P_V2: Not allowed NFT");
     });
 
 
