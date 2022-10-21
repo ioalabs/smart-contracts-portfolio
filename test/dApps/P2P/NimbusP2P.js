@@ -11,7 +11,7 @@ describe("Test P2P for NFT Contract", function () {
         [owner, other, user2, ...accounts] = await ethers.getSigners();
         curTimestamp = await time.latest()
 
-        WBNB = await ethers.getContractFactory("contracts/mocks/MockForP2P/NBU_WBNB.sol:NBU_WBNB")
+        WBNB = await ethers.getContractFactory("NBU_WBNB")
         WbnbContract = await WBNB.deploy();
         await WbnbContract.deployed()
 
@@ -30,6 +30,10 @@ describe("Test P2P for NFT Contract", function () {
         SmartLp = await ethers.getContractFactory("MockSmartLP")
         SmartLpContract = await upgrades.deployProxy(SmartLp, [WbnbContract.address, BusdContract.address])
         await SmartLpContract.deployed()
+
+        SmartLP2 = await ethers.getContractFactory("MockSmartLP")
+        SmartLP2Contract = await upgrades.deployProxy(SmartLP2, [WbnbContract.address, BusdContract.address])
+        await SmartLP2Contract.deployed()
 
         SmartStaker = await ethers.getContractFactory("MockStakingMain")
         SmartStakerContract = await SmartStaker.deploy(WbnbContract.address)
@@ -70,14 +74,14 @@ describe("Test P2P for NFT Contract", function () {
 
         expect(await SmartLpContract.balanceOf(other.address)).to.equal(2);
         expect(await SmartLpContract.balanceOf(user2.address)).to.equal(0);
-      /*  
-        await p2pContract.connect(user2).createTradeBNBtoNFTs(
-            [SmartLpContract.address, SmartLpContract.address],
-            [1, 2],
-            curTimestamp + 200,
-            { value: ethers.utils.parseUnits("1.0") }
-        );
-        */
+        /*  
+          await p2pContract.connect(user2).createTradeBNBtoNFTs(
+              [SmartLpContract.address, SmartLpContract.address],
+              [1, 2],
+              curTimestamp + 200,
+              { value: ethers.utils.parseUnits("1.0") }
+          );
+          */
 
         await expect(p2pContract.connect(user2).createTradeBNBtoNFTs(
             [SmartLpContract.address, SmartLpContract.address],
@@ -86,19 +90,19 @@ describe("Test P2P for NFT Contract", function () {
             { value: ethers.utils.parseUnits("1.0") }
         )).to.emit(p2pContract, "NewTradeMulti")
             .withArgs(
-                user2.address, 
-                [WbnbContract.address], 
-                ethers.utils.parseUnits("1.0"), 
-                [], 
+                user2.address,
+                [WbnbContract.address],
+                ethers.utils.parseUnits("1.0"),
+                [],
                 [SmartLpContract.address, SmartLpContract.address],
                 0,
                 [1, 2],
                 curTimestamp + 200,
-                1 
+                1
             );
-//event NewTradeMulti(address indexed user, address[] proposedAssets, uint proposedAmount, uint[] proposedIds, address[] askedAssets, uint askedAmount, uint[] askedIds, uint deadline, uint indexed tradeId);
+        //event NewTradeMulti(address indexed user, address[] proposedAssets, uint proposedAmount, uint[] proposedIds, address[] askedAssets, uint askedAmount, uint[] askedIds, uint deadline, uint indexed tradeId);
 
-// emit NewTradeMulti(msg.sender, proposedAssets, proposedAmount, proposedTokenIds, askedAssets, askedAmount, askedTokenIds, deadline, tradeId);
+        // emit NewTradeMulti(msg.sender, proposedAssets, proposedAmount, proposedTokenIds, askedAssets, askedAmount, askedTokenIds, deadline, tradeId);
         const tradeId = 1;
 
         // await p2pContract.connect(other).supportTradeSingle(tradeId)
@@ -108,10 +112,10 @@ describe("Test P2P for NFT Contract", function () {
 
         expect(await SmartLpContract.balanceOf(other.address)).to.equal(0);
         expect(await SmartLpContract.balanceOf(user2.address)).to.equal(2);
-            
+
         expect(await SmartLpContract.ownerOf(1)).to.equal(user2.address);
         expect(await SmartLpContract.ownerOf(2)).to.equal(user2.address);
-// tradeId = _createTradeMulti(proposedAssets, msg.value, proposedIds, askedAssets, 0, askedTokenIds, deadline, true);
+        // tradeId = _createTradeMulti(proposedAssets, msg.value, proposedIds, askedAssets, 0, askedTokenIds, deadline, true);
     });
 
     /*
@@ -155,7 +159,7 @@ describe("Test P2P for NFT Contract", function () {
 
         expect(await SmartLpContract.balanceOf(other.address)).to.equal(1);
         expect(await SmartLpContract.balanceOf(user2.address)).to.equal(0);
-        
+
         await p2pContract.connect(user2).createTradeBNBtoNFTs(
             [SmartLpContract.address, SmartLpContract.address],
             [1, 2],
@@ -172,9 +176,9 @@ describe("Test P2P for NFT Contract", function () {
 
         expect(await SmartLpContract.balanceOf(other.address)).to.equal(1);
         expect(await SmartLpContract.balanceOf(user2.address)).to.equal(0);
-            
+
         expect(await SmartLpContract.ownerOf(1)).to.equal(other.address);
-     //   expect(await SmartLpContract.ownerOf(2)).to.equal(user2.address);
+        //   expect(await SmartLpContract.ownerOf(2)).to.equal(user2.address);
 
     });
 
@@ -211,23 +215,23 @@ describe("Test P2P for NFT Contract", function () {
                 1
             );
 
-//event NewTradeMulti(address indexed user, address[] proposedAssets, uint proposedAmount, uint[] proposedIds, address[] askedAssets, uint askedAmount, uint[] askedIds, uint deadline, uint indexed tradeId);
+        //event NewTradeMulti(address indexed user, address[] proposedAssets, uint proposedAmount, uint[] proposedIds, address[] askedAssets, uint askedAmount, uint[] askedIds, uint deadline, uint indexed tradeId);
 
 
-       // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
+        // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
 
-       const tradeId = 1;
+        const tradeId = 1;
 
-       await BusdContract.transfer(user2.address, "1000000000000000000")
-       await BusdContract.connect(user2).approve(p2pContract.address, "1000000000000000000");
+        await BusdContract.transfer(user2.address, "1000000000000000000")
+        await BusdContract.connect(user2).approve(p2pContract.address, "1000000000000000000");
 
 
-       await expect(p2pContract.connect(user2).supportTradeMulti(1))
-        .to.emit(p2pContract, "SupportTrade")
-        .withArgs(tradeId, user2.address);
+        await expect(p2pContract.connect(user2).supportTradeMulti(1))
+            .to.emit(p2pContract, "SupportTrade")
+            .withArgs(tradeId, user2.address);
 
-       expect(await SmartLpContract.balanceOf(other.address)).to.equal(0);
-       expect(await SmartLpContract.balanceOf(user2.address)).to.equal(2);
+        expect(await SmartLpContract.balanceOf(other.address)).to.equal(0);
+        expect(await SmartLpContract.balanceOf(user2.address)).to.equal(2);
 
     });
 
@@ -252,7 +256,7 @@ describe("Test P2P for NFT Contract", function () {
             curTimestamp + 200
         )
 
-       // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
+        // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
 
         const tradeId = 1;
 
@@ -294,7 +298,7 @@ describe("Test P2P for NFT Contract", function () {
             block.timestamp + 1000
         )
 
-        await time.increase(60*60);
+        await time.increase(60 * 60);
         const tradeId = 1;
 
         await expect(p2pContract.connect(other).withdrawOverdueAssetsMulti(tradeId))
@@ -327,7 +331,7 @@ describe("Test P2P for NFT Contract", function () {
                 1
             );
 
-        await time.increase(60*60);
+        await time.increase(60 * 60);
         const tradeId = 1;
 
         await expect(p2pContract.connect(user2).withdrawOverdueAssetsMulti(tradeId))
@@ -355,7 +359,7 @@ describe("Test P2P for NFT Contract", function () {
         expect(await BusdContract.balanceOf(other.address)).to.equal(0);
 
 
-        await time.increase(60*60);
+        await time.increase(60 * 60);
         const tradeId = 1;
 
         await expect(p2pContract.connect(other).withdrawOverdueAssetsMulti(tradeId))
@@ -405,7 +409,7 @@ describe("Test P2P for NFT Contract", function () {
 
 
 
-       // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
+        // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
 
         const tradeId = 1;
 
@@ -443,17 +447,17 @@ describe("Test P2P for NFT Contract", function () {
             curTimestamp + 200
         )
 
-       // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
+        // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
 
-       const tradeId = 1;
+        const tradeId = 1;
 
 
-       await expect(p2pContract.connect(other).supportTradeMulti(1))
-        .to.emit(p2pContract, "SupportTrade")
-        .withArgs(tradeId, other.address);
+        await expect(p2pContract.connect(other).supportTradeMulti(1))
+            .to.emit(p2pContract, "SupportTrade")
+            .withArgs(tradeId, other.address);
 
-       expect(await SmartLpContract.balanceOf(other.address)).to.equal(0);
-       expect(await SmartLpContract.balanceOf(user2.address)).to.equal(2);
+        expect(await SmartLpContract.balanceOf(other.address)).to.equal(0);
+        expect(await SmartLpContract.balanceOf(user2.address)).to.equal(2);
 
     });
 
@@ -517,15 +521,15 @@ describe("Test P2P for NFT Contract", function () {
             curTimestamp + 200
         )
 
-       // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
+        // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
 
         const tradeId = 1;
         await expect(p2pContract.connect(other).supportTradeMulti(
             tradeId
         )).to.be.reverted;
 
-       expect(await SmartLpContract.balanceOf(other.address)).to.equal(1);
-       expect(await SmartLpContract.balanceOf(user2.address)).to.equal(0);
+        expect(await SmartLpContract.balanceOf(other.address)).to.equal(1);
+        expect(await SmartLpContract.balanceOf(user2.address)).to.equal(0);
 
     });
 
@@ -534,7 +538,10 @@ describe("Test P2P for NFT Contract", function () {
         await BusdContract.connect(other).approve(SmartLpContract.address, "1000000000000");
 
         await BusdContract.transfer(user2.address, "10000000000000000000")
-        await BusdContract.connect(user2).approve(SmartLpContract.address, "1000000000000");
+        await BusdContract.connect(user2).approve(SmartLP2Contract.address, "1000000000000");
+
+        await p2pContract.connect(owner).updateAllowedNFT(SmartLpContract.address, true)
+        await p2pContract.connect(owner).updateAllowedNFT(SmartLP2Contract.address, true)
 
 
         await SmartLpContract.connect(other).buySmartLPforToken(100000000000);
@@ -542,32 +549,16 @@ describe("Test P2P for NFT Contract", function () {
         await SmartLpContract.connect(other).buySmartLPforToken(100000000000);
         await SmartLpContract.connect(other).approve(p2pContract.address, 2);
 
-        await SmartLpContract.connect(user2).buySmartLPforToken(100000000000);
-        await SmartLpContract.connect(user2).approve(p2pContract.address, 3);
-        await SmartLpContract.connect(user2).buySmartLPforToken(100000000000);
-        await SmartLpContract.connect(user2).approve(p2pContract.address, 4);
+        await SmartLP2Contract.connect(user2).buySmartLPforToken(100000000000);
+        await SmartLP2Contract.connect(user2).approve(p2pContract.address, 1);
+        await SmartLP2Contract.connect(user2).buySmartLPforToken(100000000000);
+        await SmartLP2Contract.connect(user2).approve(p2pContract.address, 2);
 
-        expect(await SmartLpContract.balanceOf(other.address)).to.equal(2);
-        expect(await SmartLpContract.balanceOf(user2.address)).to.equal(2);
-
-        expect(await SmartLpContract.ownerOf(1)).to.equal(other.address);
-        expect(await SmartLpContract.ownerOf(2)).to.equal(other.address);
-        expect(await SmartLpContract.ownerOf(3)).to.equal(user2.address);
-        expect(await SmartLpContract.ownerOf(4)).to.equal(user2.address);
-/*
-        await p2pContract.connect(user2).createTradeNFTsToNFTs(
-            [SmartLpContract.address, SmartLpContract.address],
-            [1, 2],
-            [SmartLpContract.address, SmartLpContract.address],
-            [3, 4],
-            curTimestamp + 200
-        )
-*/
         await expect(p2pContract.connect(other).createTradeNFTsToNFTs(
             [SmartLpContract.address, SmartLpContract.address],
             [1, 2],
-            [SmartLpContract.address, SmartLpContract.address],
-            [3, 4],
+            [SmartLP2Contract.address, SmartLP2Contract.address],
+            [2, 1],
             curTimestamp + 200
         )).to.emit(p2pContract, "NewTradeMulti")
             .withArgs(
@@ -575,78 +566,145 @@ describe("Test P2P for NFT Contract", function () {
                 [SmartLpContract.address, SmartLpContract.address],
                 0,
                 [1, 2],
-                [SmartLpContract.address, SmartLpContract.address],
+                [SmartLP2Contract.address, SmartLP2Contract.address],
                 0,
-                [3, 4],
+                [2, 1],
                 curTimestamp + 200,
                 1
             );
 
-       // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
 
-       const tradeId = 1;
+        it("Should revert when caller does not have enough NFTs processing trade NFTs to NFTs", async function () {
+            await BusdContract.transfer(other.address, "10000000000000000000")
+            await BusdContract.connect(other).approve(SmartLpContract.address, "1000000000000");
 
-
-       await expect(p2pContract.connect(user2).supportTradeMulti(1))
-        .to.emit(p2pContract, "SupportTrade")
-        .withArgs(tradeId, user2.address);
-
-       expect(await SmartLpContract.balanceOf(other.address)).to.equal(2);
-       expect(await SmartLpContract.balanceOf(user2.address)).to.equal(2);
-
-       expect(await SmartLpContract.ownerOf(1)).to.equal(user2.address);
-       expect(await SmartLpContract.ownerOf(2)).to.equal(user2.address);
-       expect(await SmartLpContract.ownerOf(3)).to.equal(other.address);
-       expect(await SmartLpContract.ownerOf(4)).to.equal(other.address);
-
-    });
-
-    it("Should revert when caller does not have enough NFTs processing trade NFTs to NFTs", async function () {
-        await BusdContract.transfer(other.address, "10000000000000000000")
-        await BusdContract.connect(other).approve(SmartLpContract.address, "1000000000000");
-
-        await BusdContract.transfer(user2.address, "10000000000000000000")
-        await BusdContract.connect(user2).approve(SmartLpContract.address, "1000000000000");
+            await BusdContract.transfer(user2.address, "10000000000000000000")
+            await BusdContract.connect(user2).approve(SmartLpContract.address, "1000000000000");
 
 
-        await SmartLpContract.connect(other).buySmartLPforToken(100000000000);
-        await SmartLpContract.connect(other).approve(p2pContract.address, 1);
-        await SmartLpContract.connect(other).buySmartLPforToken(100000000000);
-        await SmartLpContract.connect(other).approve(p2pContract.address, 2);
+            await SmartLpContract.connect(other).buySmartLPforToken(100000000000);
+            await SmartLpContract.connect(other).approve(p2pContract.address, 1);
+            await SmartLpContract.connect(other).buySmartLPforToken(100000000000);
+            await SmartLpContract.connect(other).approve(p2pContract.address, 2);
 
-        await SmartLpContract.connect(user2).buySmartLPforToken(100000000000);
-        await SmartLpContract.connect(user2).approve(p2pContract.address, 3);
-
-
-        expect(await SmartLpContract.balanceOf(other.address)).to.equal(2);
-        expect(await SmartLpContract.balanceOf(user2.address)).to.equal(1);
-
-        expect(await SmartLpContract.ownerOf(1)).to.equal(other.address);
-        expect(await SmartLpContract.ownerOf(2)).to.equal(other.address);
-        expect(await SmartLpContract.ownerOf(3)).to.equal(user2.address);
+            await SmartLpContract.connect(user2).buySmartLPforToken(100000000000);
+            await SmartLpContract.connect(user2).approve(p2pContract.address, 3);
 
 
-        const res = await p2pContract.connect(other).createTradeNFTsToNFTs(
-            [SmartLpContract.address, SmartLpContract.address],
-            [1, 2],
-            [SmartLpContract.address, SmartLpContract.address],
-            [3, 4],
-            curTimestamp + 200
-        )
+            expect(await SmartLpContract.balanceOf(other.address)).to.equal(2);
+            expect(await SmartLpContract.balanceOf(user2.address)).to.equal(1);
 
-       // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
-
-        const tradeId = 1;
+            expect(await SmartLpContract.ownerOf(1)).to.equal(other.address);
+            expect(await SmartLpContract.ownerOf(2)).to.equal(other.address);
+            expect(await SmartLpContract.ownerOf(3)).to.equal(user2.address);
 
 
-        await expect(p2pContract.connect(user2).supportTradeMulti(
-            tradeId
-        )).to.be.reverted;
+            const res = await p2pContract.connect(other).createTradeNFTsToNFTs(
+                [SmartLpContract.address, SmartLpContract.address],
+                [1, 2],
+                [SmartLpContract.address, SmartLpContract.address],
+                [3, 4],
+                curTimestamp + 200
+            )
 
-        expect(await SmartLpContract.balanceOf(other.address)).to.equal(0);
-        expect(await SmartLpContract.balanceOf(user2.address)).to.equal(1);
+            // const tradeId = parseInt(ethers.utils.formatEther( res.value ))
 
-        expect(await SmartLpContract.ownerOf(3)).to.equal(user2.address);
+            const tradeId = 1;
 
-    });
-});
+
+            await expect(p2pContract.connect(user2).supportTradeMulti(
+                tradeId
+            )).to.be.reverted;
+
+            expect(await SmartLpContract.balanceOf(other.address)).to.equal(0);
+            expect(await SmartLpContract.balanceOf(user2.address)).to.equal(1);
+
+            expect(await SmartLpContract.ownerOf(3)).to.equal(user2.address);
+
+        });
+
+        it("Should process multi trade NFTs to NFTs,same contracts,same index", async function () {
+            await BusdContract.transfer(other.address, "10000000000000000000")
+            await BusdContract.connect(other).approve(SmartLpContract.address, "1000000000000");
+
+            await SmartLpContract.connect(other).buySmartLPforToken(100000000000);
+            await SmartLpContract.connect(other).approve(p2pContract.address, 1);
+            await SmartLpContract.connect(other).buySmartLPforToken(100000000000);
+            await SmartLpContract.connect(other).approve(p2pContract.address, 2);
+
+            await expect(p2pContract.connect(other).createTradeNFTsToNFTs(
+                [SmartLpContract.address, SmartLpContract.address],
+                [1, 2],
+                [SmartLpContract.address, SmartLpContract.address],
+                [1, 2],
+                curTimestamp + 200
+            )).to.be.revertedWith("NimbusP2P_V2: Asked asset can't be equal to proposed asset");
+
+        });
+        it("Should process multi trade NFTs to NFTs,different contracts,same index", async function () {
+            await BusdContract.transfer(other.address, "10000000000000000000")
+            await BusdContract.connect(other).approve(SmartLpContract.address, "1000000000000");
+            await BusdContract.connect(other).approve(SmartLP2Contract.address, "1000000000000");
+
+
+            await SmartLpContract.connect(other).buySmartLPforToken(100000000000);
+            await SmartLpContract.connect(other).approve(p2pContract.address, 1);
+            await SmartLP2Contract.connect(other).buySmartLPforToken(100000000000);
+            await SmartLP2Contract.connect(other).approve(p2pContract.address, 1);
+            await p2pContract.connect(owner).updateAllowedNFT(SmartLpContract.address, true);
+            await p2pContract.connect(owner).updateAllowedNFT(SmartLP2Contract.address, true);
+
+            await expect(p2pContract.connect(other).createTradeNFTsToNFTs(
+                [SmartLpContract.address],
+                [1],
+                [SmartLP2Contract.address],
+                [1],
+                curTimestamp + 200
+            )).to.emit(p2pContract, "NewTradeMulti")
+                .withArgs(
+                    other.address,
+                    [SmartLpContract.address],
+                    0,
+                    [1],
+                    [SmartLP2Contract.address],
+                    0,
+                    [1],
+                    curTimestamp + 200,
+                    1
+                );
+        });
+        it("Should process multi trade NFTs to NFTs,different contracts,different index", async function () {
+            await BusdContract.transfer(other.address, "10000000000000000000")
+            await BusdContract.connect(other).approve(SmartLpContract.address, "1000000000000");
+            await BusdContract.connect(other).approve(SmartLP2Contract.address, "1000000000000");
+
+
+            await SmartLpContract.connect(other).buySmartLPforToken(100000000000);
+            await SmartLpContract.connect(other).approve(p2pContract.address, 1);
+            await SmartLP2Contract.connect(other).buySmartLPforToken(100000000000);
+            await SmartLP2Contract.connect(other).buySmartLPforToken(100000000000);
+            await SmartLP2Contract.connect(other).approve(p2pContract.address, 2);
+            await p2pContract.connect(owner).updateAllowedNFT(SmartLpContract.address, true);
+            await p2pContract.connect(owner).updateAllowedNFT(SmartLP2Contract.address, true);
+
+            await expect(p2pContract.connect(other).createTradeNFTsToNFTs(
+                [SmartLpContract.address],
+                [1],
+                [SmartLP2Contract.address],
+                [2],
+                curTimestamp + 200
+            )).to.emit(p2pContract, "NewTradeMulti")
+                .withArgs(
+                    other.address,
+                    [SmartLpContract.address],
+                    0,
+                    [1],
+                    [SmartLP2Contract.address],
+                    0,
+                    [2],
+                    curTimestamp + 200,
+                    1
+                );
+        })
+    })
+})

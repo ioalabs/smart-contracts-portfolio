@@ -1,6 +1,6 @@
 const {ethers, upgrades } = require('hardhat');
 const { expect } = require('chai');
-const { signDaiPermit, signERC2612Permit } = require("../../utils/eth-permit");
+const { signERC2612Permit } = require ('../../utils/eth-permit');
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 let p2p;
@@ -15,13 +15,13 @@ describe('NimbusP2P', () => {
     beforeEach(async () => {
         [owner, other, user2, ...accounts] = await ethers.getSigners();
 
-        const WBNB = await ethers.getContractFactory("contracts/mocks/MockForP2P/NBU_WBNB.sol:NBU_WBNB")
+        const WBNB = await ethers.getContractFactory('NBU_WBNB')
         wbnb = await WBNB.deploy();
 
         const BUSD = await ethers.getContractFactory('BUSDTest')
         busd = await BUSD.deploy();
 
-        const NBU = await ethers.getContractFactory("contracts/mocks/MockForP2P/NBU.sol:NBU")
+        const NBU = await ethers.getContractFactory('contracts/mocks/MockForP2P/NBU.sol:NBU')
         nbu = await NBU.deploy();
 
         const SmartLp = await ethers.getContractFactory('MockSmartLP')
