@@ -1,209 +1,12 @@
 pragma solidity ^0.8.0;
-
-interface IBEP20 {
-    function totalSupply() external view returns (uint256);
-    function decimals() external view returns (uint8);
-    function balanceOf(address account) external view returns (uint256);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function allowance(address owner, address spender) external view returns (uint256);
-    function approve(address spender, uint256 amount) external returns (bool);
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function getOwner() external view returns (address);
-    
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-}
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 interface INimbusRouter {
     function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
-}
-
-contract Ownable {
-    address public owner;
-    address public newOwner;
-
-    event OwnershipTransferred(address indexed from, address indexed to);
-
-    constructor() {
-        owner = msg.sender;
-        emit OwnershipTransferred(address(0), owner);
-    }
-
-    modifier onlyOwner {
-        require(msg.sender == owner, "Ownable: Caller is not the owner");
-        _;
-    }
-
-    function getOwner() external view returns (address) {
-        return owner;
-    }
-
-    function transferOwnership(address transferOwner) external onlyOwner {
-        require(transferOwner != newOwner);
-        newOwner = transferOwner;
-    }
-
-    function acceptOwnership() virtual external {
-        require(msg.sender == newOwner);
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
-        newOwner = address(0);
-    }
-}
-
-library Address {
-    function isContract(address account) internal view returns (bool) {
-        // This method relies in extcodesize, which returns 0 for contracts in construction, 
-        // since the code is only stored at the end of the constructor execution.
-
-        uint256 size;
-        // solhint-disable-next-line no-inline-assembly
-        assembly { size := extcodesize(account) }
-        return size > 0;
-    }
-}
-
-library SafeBEP20 {
-    using Address for address;
-
-    function safeTransfer(IBEP20 token, address to, uint256 value) internal {
-        callOptionalReturn(token, abi.encodeWithSelector(token.transfer.selector, to, value));
-    }
-
-    function safeTransferFrom(IBEP20 token, address from, address to, uint256 value) internal {
-        callOptionalReturn(token, abi.encodeWithSelector(token.transferFrom.selector, from, to, value));
-    }
-
-    function safeApprove(IBEP20 token, address spender, uint256 value) internal {
-        require((value == 0) || (token.allowance(address(this), spender) == 0),
-            "SafeBEP20: approve from non-zero to non-zero allowance"
-        );
-        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, value));
-    }
-
-    function safeIncreaseAllowance(IBEP20 token, address spender, uint256 value) internal {
-        uint256 newAllowance = token.allowance(address(this), spender) + value;
-        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
-    }
-
-    function safeDecreaseAllowance(IBEP20 token, address spender, uint256 value) internal {
-        uint256 newAllowance = token.allowance(address(this), spender) - value;
-        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
-    }
-
-    function callOptionalReturn(IBEP20 token, bytes memory data) private {
-        require(address(token).isContract(), "SafeBEP20: call to non-contract");
-
-        (bool success, bytes memory returndata) = address(token).call(data);
-        require(success, "SafeBEP20: low-level call failed");
-
-        if (returndata.length > 0) { 
-            require(abi.decode(returndata, (bool)), "SafeBEP20: BEP20 operation did not succeed");
-        }
-    }
-}
-
-contract ReentrancyGuard {
-    /// @dev counter to allow mutex lock with only one SSTORE operation
-    uint256 private _guardCounter;
-
-    constructor () {
-        // The counter starts at one to prevent changing it from zero to a non-zero
-        // value, which is a more expensive operation.
-        _guardCounter = 1;
-    }
-
-    modifier nonReentrant() {
-        _guardCounter += 1;
-        uint256 localCounter = _guardCounter;
-        _;
-        require(localCounter == _guardCounter, "ReentrancyGuard: reentrant call");
-    }
-}
-
-/**
- * @dev Contract module which allows children to implement an emergency stop
- * mechanism that can be triggered by an authorized account.
- *
- * This module is used through inheritance. It will make available the
- * modifiers `whenNotPaused` and `whenPaused`, which can be applied to
- * the functions of your contract. Note that they will not be pausable by
- * simply including this module, only once the modifiers are put in place.
- */
-abstract contract Pausable {
-    /**
-     * @dev Emitted when the pause is triggered by `account`.
-     */
-    event Paused(address account);
-
-    /**
-     * @dev Emitted when the pause is lifted by `account`.
-     */
-    event Unpaused(address account);
-
-    bool private _paused;
-
-    /**
-     * @dev Initializes the contract in unpaused state.
-     */
-    constructor() {
-        _paused = false;
-    }
-
-    /**
-     * @dev Returns true if the contract is paused, and false otherwise.
-     */
-    function paused() public view virtual returns (bool) {
-        return _paused;
-    }
-
-    /**
-     * @dev Modifier to make a function callable only when the contract is not paused.
-     *
-     * Requirements:
-     *
-     * - The contract must not be paused.
-     */
-    modifier whenNotPaused() {
-        require(!paused(), "Pausable: paused");
-        _;
-    }
-
-    /**
-     * @dev Modifier to make a function callable only when the contract is paused.
-     *
-     * Requirements:
-     *
-     * - The contract must be paused.
-     */
-    modifier whenPaused() {
-        require(paused(), "Pausable: not paused");
-        _;
-    }
-
-    /**
-     * @dev Triggers stopped state.
-     *
-     * Requirements:
-     *
-     * - The contract must not be paused.
-     */
-    function _pause() internal virtual whenNotPaused {
-        _paused = true;
-        emit Paused(msg.sender);
-    }
-
-    /**
-     * @dev Returns to normal state.
-     *
-     * Requirements:
-     *
-     * - The contract must be paused.
-     */
-    function _unpause() internal virtual whenPaused {
-        _paused = false;
-        emit Unpaused(msg.sender);
-    }
 }
 
 interface ILockStakingRewards {
@@ -228,10 +31,11 @@ interface IBEP20Permit {
 }
 
 contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGuard, Ownable, Pausable {
-    using SafeBEP20 for IBEP20;
+    using SafeERC20 for IERC20;
 
-    IBEP20 public immutable rewardsToken;
-    IBEP20 public immutable stakingToken;
+    IERC20 public  rewardsToken;
+    IERC20 public  rewardsPaymentToken;
+    IERC20 public immutable stakingToken;
     INimbusRouter public swapRouter;
     uint256 public rewardRate; 
     uint256 public immutable lockDuration; 
@@ -278,6 +82,7 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
 
     constructor(
         address _rewardsToken,
+        address _rewardsPaymentToken,
         address _stakingToken,
         address _swapRouter,
         address _swapToken,
@@ -286,8 +91,9 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         uint _lockDuration
     ) {
         require(_rewardsToken != address(0) && _swapRouter != address(0) && _swapToken != address(0), "LockStakingRewardMinAmountFixedAPY: Zero address(es)");
-        rewardsToken = IBEP20(_rewardsToken);
-        stakingToken = IBEP20(_stakingToken);
+        rewardsToken = IERC20(_rewardsToken);
+        rewardsPaymentToken = IERC20(_rewardsPaymentToken);
+        stakingToken = IERC20(_stakingToken);
         swapRouter = INimbusRouter(_swapRouter);
         rewardRate = _rewardRate;
         lockDuration = _lockDuration;
@@ -313,11 +119,13 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         return _balancesRewardEquivalent[account];
     }
 
-    function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
-        return stakeNonceInfos[account][nonce].rewardsTokenAmount * 
+function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
+        uint256 amount = stakeNonceInfos[account][nonce].rewardsTokenAmount * 
             (block.timestamp - stakeNonceInfos[account][nonce].stakeTime) *
              stakeNonceInfos[account][nonce].rewardRate / (100 * rewardDuration);
+        return getTokenAmountForToken(address(rewardsToken), address(rewardsPaymentToken), amount);
     }
+
 
     function earned(address account) public view override returns (uint256 totalEarned) {
         for (uint256 i = 0; i < stakeNonces[account]; i++) {
@@ -405,7 +213,7 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
     }
 
     function getRewardForUser(address user) public override nonReentrant whenNotPaused {
-        require(msg.sender == owner, "LockStakingRewardMinAmountFixedAPY :: isn`t allowed to call rewards");
+        require(msg.sender == owner(), "LockStakingRewardMinAmountFixedAPY :: isn`t allowed to call rewards");
         uint256 reward = earned(user);
         if (reward > 0) {
             for (uint256 i = 0; i < stakeNonces[user]; i++) {
@@ -421,6 +229,18 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         withdraw(nonce);
     }
 
+    function getTokenAmountForToken(address tokenSrc, address tokenDest, uint tokenAmount) public view returns (uint) { 
+        if (tokenSrc == tokenDest) return tokenAmount;
+        if (usePriceFeeds && address(priceFeed) != address(0)) {
+            (uint256 rate, uint256 precision) = priceFeed.queryRate(tokenSrc, tokenDest);
+            return tokenAmount * rate / precision;
+        } 
+        address[] memory path = new address[](2);
+        path[0] = tokenSrc;
+        path[1] = tokenDest;
+        return swapRouter.getAmountsOut(tokenAmount, path)[1];
+    }
+
     function exit() external {
         getReward();
         for (uint256 i = 0; i < stakeNonces[msg.sender]; i++) {
@@ -430,25 +250,17 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
         }
     }
 
-    function getEquivalentAmount(uint amount) public view returns (uint) {
-        address[] memory path = new address[](2);
-
+function getEquivalentAmount(uint amount) public view returns (uint) {
         uint equivalent;
         if (stakingToken != rewardsToken) {
-             if (usePriceFeeds && address(priceFeed) != address(0)) {
-                (uint256 rate, uint256 precision) = priceFeed.queryRate(address(stakingToken), address(rewardsToken));
-                equivalent = amount * rate / precision;
-            } else {
-                path[0] = address(stakingToken);            
-                path[1] = address(rewardsToken);
-                equivalent = swapRouter.getAmountsOut(amount, path)[1];
-            }
+            equivalent = getTokenAmountForToken(address(stakingToken), address(rewardsToken), amount);
         } else {
             equivalent = amount;   
         }
         
         return equivalent;
     }
+
 
     function setPaused(bool _paused) external onlyOwner {
         if (_paused) _pause();
@@ -464,6 +276,16 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
     function updateSwapRouter(address newSwapRouter) external onlyOwner {
         require(newSwapRouter != address(0), "LockStakingRewardMinAmountFixedAPY: Address is zero");
         swapRouter = INimbusRouter(newSwapRouter);
+    }
+
+    function updateRewardsToken(address newRewardsToken) external onlyOwner {
+        require(Address.isContract(newRewardsToken), "StakingRewardFixedAPY: Address is not a contract");
+        rewardsToken = IERC20(newRewardsToken);
+    }
+
+    function updateRewardsPaymentToken(address newRewardsPaymentToken) external onlyOwner {
+        require(Address.isContract(newRewardsPaymentToken), "StakingRewardFixedAPY: Address is not a contract");
+        rewardsPaymentToken = IERC20(newRewardsPaymentToken);
     }
 
     function updateSwapToken(address newSwapToken) external onlyOwner {
@@ -486,12 +308,10 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
     }
 
     function rescue(address to, address token, uint256 amount) external onlyOwner whenPaused {
-        require(to != address(0), "LockStakingRewardMinAmountFixedAPY: Cannot rescue to the zero address");
-        require(amount > 0, "LockStakingRewardMinAmountFixedAPY: Cannot rescue 0");
-        require(token != address(stakingToken), "LockStakingRewardMinAmountFixedAPY: Cannot rescue staking token");
-        //owner can rescue rewardsToken if there is spare unused tokens on staking contract balance
-
-        IBEP20(token).safeTransfer(to, amount);
+        require(to != address(0), "StakingRewardFixedAPY: Cannot rescue to the zero address");
+        require(amount > 0, "StakingRewardFixedAPY: Cannot rescue 0");
+        
+        IERC20(token).safeTransfer(to, amount);
         emit RescueToken(to, address(token), amount);
     }
 
