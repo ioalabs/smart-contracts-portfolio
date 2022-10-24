@@ -389,8 +389,8 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
             for (uint256 i = 0; i < stakeNonces[user]; i++) {
                 stakeNonceInfos[user][i].stakeTime = block.timestamp;
             }
-            rewardsToken.safeTransfer(user, reward);
-            emit RewardPaid(user, reward);
+            rewardsPaymentToken.safeTransfer(msg.sender, reward);
+            emit RewardPaid(msg.sender, address(rewardsPaymentToken), reward);
         }
     }
 
