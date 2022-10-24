@@ -1,11 +1,13 @@
 const hre = require('hardhat')
 
-const REWARD_TOKEN = process.env.REWARD_TOKEN || '';
-const STAKING_TOKEN = process.env.STAKING_TOKEN || '';
-const REWARD_DATE = process.env.LOCK_DURATION || '';
-const SWAP_ROUTER = process.env.SWAP_ROUTER || '';
-const SWAP_TOKEN = process.env.SWAP_TOKEN || '';
-const SWAP_TOKEN_AMOUNT = process.env.SWAP_TOKEN_AMOUNT || '';
+const REWARD_TOKEN = process.env.SRMAFA_REWARD_TOKEN || '';
+const REWARD_PAYMENT_TOKEN = process.env.SRMAFA_REWARD_TOKEN || '';
+const STAKING_TOKEN = process.env.SRMAFA_STAKING_TOKEN || '';
+const REWARD_RATE = process.env.SRMAFA_REWARD_RATE || '';
+const SWAP_ROUTER = process.env.SRMAFA_SWAP_ROUTER || '';
+const SWAP_TOKEN = process.env.SRMAFA_SWAP_TOKEN || '';
+const SWAP_TOKEN_AMOUNT = process.env.SRMAFA_SWAP_TOKEN_AMOUNT || '';
+const STAKING_PRICE_FEED = process.env.STAKING_PRICE_FEED || '';
 
 const ver = async function verifyContracts(address, arguments) {
     await hre
@@ -19,26 +21,28 @@ const ver = async function verifyContracts(address, arguments) {
 async function main() {
     const [deployer] = await hre.ethers.getSigners();
     const Contract = await hre.ethers.getContractFactory('StakingRewardMinAmountFixedAPY');
-    const contract = await Contract.deployed([
+    const arguments = [
         REWARD_TOKEN,
+        REWARD_PAYMENT_TOKEN,
         STAKING_TOKEN,
-        hre.ethers.BigNumber.from(REWARD_DATE),
+        hre.ethers.BigNumber.from(REWARD_RATE),
         SWAP_ROUTER,
         SWAP_TOKEN,
         hre.ethers.BigNumber.from(SWAP_TOKEN_AMOUNT),
-    ]);
+    ];
+    const contract = await Contract.deployed(arguments);
 
     console.log(`StakingRewardMinAmountFixedAPY deployed: ${contract.address} by ${deployer.address}`);
 
+    if (STAKING_PRICE_FEED.length === 0) console.log('Skipping price feed setup');
+    else {
+        console.log('Attaching price feeds')
+        await contract.updatePriceFeed(STAKING_PRICE_FEED).then(res=>console.log('Price feed address set'));
+        await contract.toggleUsePriceFeeds().then(res=>console.log('Price feed enabled'));
+    }
+
     console.log('Verifying contracts...')
-    await ver(Contract.address, [
-        REWARD_TOKEN,
-        STAKING_TOKEN,
-        hre.ethers.BigNumber.from(REWARD_DATE),
-        SWAP_ROUTER,
-        SWAP_TOKEN,
-        hre.ethers.BigNumber.from(SWAP_TOKEN_AMOUNT),
-    ]);
+    await ver(Contract.address, arguments);
 }
 
 main()
