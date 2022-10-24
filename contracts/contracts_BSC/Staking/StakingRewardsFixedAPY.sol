@@ -270,8 +270,7 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         require(to != address(0), "StakingRewardFixedAPY: Cannot rescue to the zero address");
         require(amount > 0, "StakingRewardFixedAPY: Cannot rescue 0");
 
-        (bool sent, ) = to.call{value: amount}("");
-        require(sent, "StakingRewardFixedAPY: Rescue BNB failed");
+        Address.sendValue(to, amount);
         emit RescueBNB(to, amount);
     }
 }
