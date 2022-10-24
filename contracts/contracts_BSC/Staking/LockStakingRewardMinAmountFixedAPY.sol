@@ -74,7 +74,7 @@ contract LockStakingRewardMinAmountFixedAPY is ILockStakingRewards, ReentrancyGu
     event RewardRateUpdated(uint256 indexed rateChangesNonce, uint256 rewardRate, uint256 timestamp);
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
-    event RewardPaid(address indexed user, uint256 reward);
+    event RewardPaid(address indexed user, address indexed paymentToken, uint256 reward);
     event Rescue(address indexed to, uint amount);
     event RescueToken(address indexed to, address indexed token, uint amount);
 
@@ -207,8 +207,9 @@ function earnedByNonce(address account, uint256 nonce) public view returns (uint
             for (uint256 i = 0; i < stakeNonces[msg.sender]; i++) {
                 stakeNonceInfos[msg.sender][i].stakeTime = block.timestamp;
             }
-            rewardsToken.safeTransfer(msg.sender, reward);
-            emit RewardPaid(msg.sender, reward);
+        rewardsPaymentToken.safeTransfer(msg.sender, reward);
+        emit RewardPaid(msg.sender, address(rewardsPaymentToken), reward);
+
         }
     }
 
@@ -219,8 +220,9 @@ function earnedByNonce(address account, uint256 nonce) public view returns (uint
             for (uint256 i = 0; i < stakeNonces[user]; i++) {
                 stakeNonceInfos[user][i].stakeTime = block.timestamp;
             }
-            rewardsToken.safeTransfer(user, reward);
-            emit RewardPaid(user, reward);
+    rewardsPaymentToken.safeTransfer(user, reward);
+    emit RewardPaid(user, address(rewardsPaymentToken), reward);
+
         }
     }
 
