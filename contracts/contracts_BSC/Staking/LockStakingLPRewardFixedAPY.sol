@@ -1,14 +1,20 @@
-pragma solidity 0.8.7;
+pragma solidity =0.8.0;
 
-import "@openzeppelin/contracts/utils/math/Math.sol";
-import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+interface IBEP20 {
+    function totalSupply() external view returns (uint256);
+    function decimals() external pure returns (uint8);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    function getOwner() external view returns (address);
 
-interface INimbusPair is IERC20 {
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+interface INimbusPair is IBEP20 {
     function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
 }
 
@@ -16,54 +22,157 @@ interface INimbusRouter {
     function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
 }
 
-interface IStakingRewards {
+contract Ownable {
+    address public owner;
+    address public newOwner;
+
+    event OwnershipTransferred(address indexed from, address indexed to);
+
+    constructor() {
+        owner = msg.sender;
+        emit OwnershipTransferred(address(0), owner);
+    }
+
+    modifier onlyOwner {
+        require(msg.sender == owner, "Ownable: Caller is not the owner");
+        _;
+    }
+
+    function getOwner() external view returns (address) {
+        return owner;
+    }
+
+    function transferOwnership(address transferOwner) external onlyOwner {
+        require(transferOwner != newOwner);
+        newOwner = transferOwner;
+    }
+
+    function acceptOwnership() virtual external {
+        require(msg.sender == newOwner);
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+        newOwner = address(0);
+    }
+}
+
+library Math {
+    // babylonian method (https://en.wikipedia.org/wiki/Methods_of_computing_square_roots#Babylonian_method)
+    function sqrt(uint y) internal pure returns (uint z) {
+        if (y > 3) {
+            z = y;
+            uint x = y / 2 + 1;
+            while (x < z) {
+                z = x;
+                x = (y / x + x) / 2;
+            }
+        } else if (y != 0) {
+            z = 1;
+        }
+    }
+}
+
+library Address {
+    function isContract(address account) internal view returns (bool) {
+        // This method relies in extcodesize, which returns 0 for contracts in construction, 
+        // since the code is only stored at the end of the constructor execution.
+
+        uint256 size;
+        // solhint-disable-next-line no-inline-assembly
+        assembly { size := extcodesize(account) }
+        return size > 0;
+    }
+}
+
+library SafeBEP20 {
+    using Address for address;
+
+    function safeTransfer(IBEP20 token, address to, uint256 value) internal {
+        callOptionalReturn(token, abi.encodeWithSelector(token.transfer.selector, to, value));
+    }
+
+    function safeTransferFrom(IBEP20 token, address from, address to, uint256 value) internal {
+        callOptionalReturn(token, abi.encodeWithSelector(token.transferFrom.selector, from, to, value));
+    }
+
+    function safeApprove(IBEP20 token, address spender, uint256 value) internal {
+        require((value == 0) || (token.allowance(address(this), spender) == 0),
+            "SafeBEP20: approve from non-zero to non-zero allowance"
+        );
+        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, value));
+    }
+
+    function safeIncreaseAllowance(IBEP20 token, address spender, uint256 value) internal {
+        uint256 newAllowance = token.allowance(address(this), spender) + value;
+        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
+    }
+
+    function safeDecreaseAllowance(IBEP20 token, address spender, uint256 value) internal {
+        uint256 newAllowance = token.allowance(address(this), spender) - value;
+        callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
+    }
+
+    function callOptionalReturn(IBEP20 token, bytes memory data) private {
+        require(address(token).isContract(), "SafeBEP20: call to non-contract");
+
+        (bool success, bytes memory returndata) = address(token).call(data);
+        require(success, "SafeBEP20: low-level call failed");
+
+        if (returndata.length > 0) { 
+            require(abi.decode(returndata, (bool)), "SafeBEP20: BEP20 operation did not succeed");
+        }
+    }
+}
+
+contract ReentrancyGuard {
+    /// @dev counter to allow mutex lock with only one SSTORE operation
+    uint256 private _guardCounter;
+
+    constructor () {
+        // The counter starts at one to prevent changing it from zero to a non-zero
+        // value, which is a more expensive operation.
+        _guardCounter = 1;
+    }
+
+    modifier nonReentrant() {
+        _guardCounter += 1;
+        uint256 localCounter = _guardCounter;
+        _;
+        require(localCounter == _guardCounter, "ReentrancyGuard: reentrant call");
+    }
+}
+
+interface ILockStakingRewards {
     function earned(address account) external view returns (uint256);
     function totalSupply() external view returns (uint256);
     function balanceOf(address account) external view returns (uint256);
     function stake(uint256 amount) external;
     function stakeFor(uint256 amount, address user) external;
     function getReward() external;
-    function getRewardForUser(address user) external;
     function withdraw(uint256 nonce) external;
     function withdrawAndGetReward(uint256 nonce) external;
 }
 
-interface IPriceFeed {
-    function queryRate(address sourceTokenAddress, address destTokenAddress) external view returns (uint256 rate, uint256 precision);
-    function wbnbToken() external view returns(address);
+interface IBEP20Permit {
+    function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
 }
 
-contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pausable {
-    using SafeERC20 for IERC20;
-    using SafeERC20 for INimbusPair;
+contract LockStakingLPRewardFixedAPY is ILockStakingRewards, ReentrancyGuard, Ownable {
+    using SafeBEP20 for IBEP20;
 
-    IERC20 public rewardsToken;
-    IERC20 public rewardsPaymentToken;
+    IBEP20 public immutable rewardsToken;
     INimbusPair public immutable stakingLPToken;
-
     INimbusRouter public swapRouter;
     address public immutable lPPairTokenA;
     address public immutable lPPairTokenB;
     uint256 public rewardRate; 
-    uint256 public rateChangesNonce;
+    uint256 public immutable lockDuration; 
     uint256 public constant rewardDuration = 365 days; 
 
     mapping(address => uint256) public weightedStakeDate;
-    mapping(address => mapping(uint256 => StakeNonceInfo)) public stakeNonceInfos;
+    mapping(address => mapping(uint256 => uint256)) public stakeLocks;
+    mapping(address => mapping(uint256 => uint256)) public stakeAmounts;
+    mapping(address => mapping(uint256 => uint256)) public stakeAmountsRewardEquivalent;
     mapping(address => uint256) public stakeNonces;
-    mapping(uint256 => APYCheckpoint) APYcheckpoints;
-
-    struct StakeNonceInfo {
-        uint256 stakeTime;
-        uint256 stakingLPTokenAmount;
-        uint256 rewardsTokenAmount;
-        uint256 rewardRate;
-    }
-
-    struct APYCheckpoint {
-        uint256 timestamp;
-        uint256 rewardRate;
-    }
 
     uint256 private _totalSupply;
     uint256 private _totalSupplyRewardEquivalent;
@@ -72,42 +181,36 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, P
     mapping(address => uint256) private _balances;
     mapping(address => uint256) private _balancesRewardEquivalent;
 
-    bool public usePriceFeeds;
-    IPriceFeed public priceFeed;
-
-    event RewardRateUpdated(uint256 indexed rateChangesNonce, uint256 rewardRate, uint256 timestamp);
+    event RewardUpdated(uint256 reward);
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
-    event RewardPaid(address indexed user, address indexed paymentToken, uint256 reward);
-    event Rescue(address indexed to, uint256 amount);
-    event RescueToken(address indexed to, address indexed token, uint256 amount);
-    event ToggleUsePriceFeeds(bool indexed usePriceFeeds);
+    event RewardPaid(address indexed user, uint256 reward);
+    event Rescue(address indexed to, uint amount);
+    event RescueToken(address indexed to, address indexed token, uint amount);
 
     constructor(
         address _rewardsToken,
-        address _rewardsPaymentToken,
         address _stakingLPToken,
         address _lPPairTokenA,
         address _lPPairTokenB,
         address _swapRouter,
-        uint _rewardRate
+        uint _rewardRate,
+        uint _lockDuration
     ) {
-        require(_rewardsToken != address(0) && _stakingLPToken != address(0) && _lPPairTokenA != address(0) && _lPPairTokenB != address(0) && _swapRouter != address(0), "StakingLPRewardFixedAPY: Zero address(es)");
-        rewardsToken = IERC20(_rewardsToken);
-        rewardsPaymentToken = IERC20(_rewardsPaymentToken);
+        require(_rewardsToken != address(0) && _stakingLPToken != address(0) && _lPPairTokenA != address(0) && _lPPairTokenB != address(0) && _swapRouter != address(0), "LockStakingLPRewardFixedAPY: Zero address(es)");
+        rewardsToken = IBEP20(_rewardsToken);
         stakingLPToken = INimbusPair(_stakingLPToken);
         swapRouter = INimbusRouter(_swapRouter);
         rewardRate = _rewardRate;
+        lockDuration = _lockDuration;
         lPPairTokenA = _lPPairTokenA;
         lPPairTokenB = _lPPairTokenB;
-        uint tokenADecimals = IERC20Metadata(_lPPairTokenA).decimals();
-        require(tokenADecimals >= 6, "StakingLPRewardFixedAPY: small amount of decimals");
+        uint tokenADecimals = IBEP20(_lPPairTokenA).decimals();
+        require(tokenADecimals >= 6, "LockStakingLPRewardFixedAPY: small amount of decimals");
         _tokenADecimalCompensate = tokenADecimals - 6;
-        uint tokenBDecimals = IERC20Metadata(_lPPairTokenB).decimals();
-        require(tokenBDecimals >= 6, "StakingLPRewardFixedAPY: small amount of decimals");
+        uint tokenBDecimals = IBEP20(_lPPairTokenB).decimals();
+        require(tokenBDecimals >= 6, "LockStakingLPRewardFixedAPY: small amount of decimals");
         _tokenBDecimalCompensate = tokenBDecimals - 6;
-        emit RewardRateUpdated(rateChangesNonce, _rewardRate, block.timestamp);
-        APYcheckpoints[rateChangesNonce++] = APYCheckpoint(block.timestamp, rewardRate);
     }
 
     function totalSupply() external view override returns (uint256) {
@@ -131,62 +234,44 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, P
         return _balancesRewardEquivalent[account];
     }
 
-    function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
-        uint256 amount = stakeNonceInfos[account][nonce].rewardsTokenAmount * 
-            (block.timestamp - stakeNonceInfos[account][nonce].stakeTime) *
-             stakeNonceInfos[account][nonce].rewardRate / (100 * rewardDuration);
-        return getTokenAmountForToken(address(rewardsToken), address(rewardsPaymentToken), amount);
-    }
-
-    function getTokenAmountForToken(address tokenSrc, address tokenDest, uint tokenAmount) public view returns (uint) { 
-        if (tokenSrc == tokenDest) return tokenAmount;
-        if (usePriceFeeds && address(priceFeed) != address(0)) {
-            (uint256 rate, uint256 precision) = priceFeed.queryRate(tokenSrc, tokenDest);
-            return tokenAmount * rate / precision;
-        } 
-        address[] memory path = new address[](2);
-        path[0] = tokenSrc;
-        path[1] = tokenDest;
-        return swapRouter.getAmountsOut(tokenAmount, path)[1];
-    }
-
-    function earned(address account) public view override returns (uint256 totalEarned) {
-        for (uint256 i = 0; i < stakeNonces[account]; i++) {
-            totalEarned += earnedByNonce(account, i);
-        }
+    function earned(address account) public view override returns (uint256) {
+        return (_balancesRewardEquivalent[account] * (block.timestamp - weightedStakeDate[account]) * rewardRate) / (100 * rewardDuration);
     }
 
     function stakeWithPermit(uint256 amount, uint deadline, uint8 v, bytes32 r, bytes32 s) external nonReentrant {
-        require(amount > 0, "StakingLPRewardFixedAPY: Cannot stake 0");
+        require(amount > 0, "LockStakingLPRewardFixedAPY: Cannot stake 0");
         // permit
-        IERC20Permit(address(stakingLPToken)).permit(msg.sender, address(this), amount, deadline, v, r, s);
+        IBEP20Permit(address(stakingLPToken)).permit(msg.sender, address(this), amount, deadline, v, r, s);
         _stake(amount, msg.sender);
     }
 
     function stake(uint256 amount) external override nonReentrant {
-        require(amount > 0, "StakingLPRewardFixedAPY: Cannot stake 0");
+        require(amount > 0, "LockStakingLPRewardFixedAPY: Cannot stake 0");
         _stake(amount, msg.sender);
     }
 
     function stakeFor(uint256 amount, address user) external override nonReentrant {
-        require(amount > 0, "StakingLPRewardFixedAPY: Cannot stake 0");
-        require(user != address(0), "StakingLPRewardFixedAPY: Cannot stake for zero address");
+        require(amount > 0, "LockStakingLPRewardFixedAPY: Cannot stake 0");
+        require(user != address(0), "LockStakingLPRewardFixedAPY: Cannot stake for zero address");
         _stake(amount, user);
     }
 
     function _stake(uint256 amount, address user) private {
-        IERC20(address(stakingLPToken)).safeTransferFrom(msg.sender, address(this), amount);
+        IBEP20(stakingLPToken).safeTransferFrom(msg.sender, address(this), amount);
         uint amountRewardEquivalent = getCurrentLPPrice() * amount / 1e18;
 
         _totalSupply += amount;
         _totalSupplyRewardEquivalent += amountRewardEquivalent;
-        _balances[user] += amount;
+        uint previousAmount = _balances[user];
+        uint newAmount = previousAmount + amount;
+        weightedStakeDate[user] = (weightedStakeDate[user] * previousAmount / newAmount) + (block.timestamp * amount / newAmount);
+        _balances[user] = newAmount;
 
         uint stakeNonce = stakeNonces[user]++;
-        stakeNonceInfos[user][stakeNonce].stakingLPTokenAmount = amount;
-        stakeNonceInfos[user][stakeNonce].stakeTime = block.timestamp;
-        stakeNonceInfos[user][stakeNonce].rewardRate = rewardRate;
-        stakeNonceInfos[user][stakeNonce].rewardsTokenAmount = amountRewardEquivalent;
+        stakeLocks[user][stakeNonce] = block.timestamp + lockDuration;
+        stakeAmounts[user][stakeNonce] = amount;
+        
+        stakeAmountsRewardEquivalent[user][stakeNonce] = amountRewardEquivalent;
         _balancesRewardEquivalent[user] += amountRewardEquivalent;
         emit Staked(user, amount);
     }
@@ -194,17 +279,17 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, P
 
     //A user can withdraw its staking tokens even if there is no rewards tokens on the contract account
     function withdraw(uint256 nonce) public override nonReentrant {
-        require(stakeNonceInfos[msg.sender][nonce].stakingLPTokenAmount > 0, "StakingLPRewardFixedAPY: This stake nonce was withdrawn");
-        uint amount = stakeNonceInfos[msg.sender][nonce].stakingLPTokenAmount;
-        uint amountRewardEquivalent = stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount;
+        require(stakeAmounts[msg.sender][nonce] > 0, "LockStakingLPRewardFixedAPY: This stake nonce was withdrawn");
+        require(stakeLocks[msg.sender][nonce] < block.timestamp, "LockStakingLPRewardFixedAPY: Locked");
+        uint amount = stakeAmounts[msg.sender][nonce];
+        uint amountRewardEquivalent = stakeAmountsRewardEquivalent[msg.sender][nonce];
         _totalSupply -= amount;
         _totalSupplyRewardEquivalent -= amountRewardEquivalent;
         _balances[msg.sender] -= amount;
         _balancesRewardEquivalent[msg.sender] -= amountRewardEquivalent;
-        stakeNonceInfos[msg.sender][nonce].stakingLPTokenAmount = 0;
-        stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount = 0;
-        stakingLPToken.safeTransfer(msg.sender, amount);
-        
+        IBEP20(stakingLPToken).safeTransfer(msg.sender, amount);
+        stakeAmounts[msg.sender][nonce] = 0;
+        stakeAmountsRewardEquivalent[msg.sender][nonce] = 0;
         emit Withdrawn(msg.sender, amount);
     }
 
@@ -212,23 +297,10 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, P
         uint256 reward = earned(msg.sender);
         if (reward > 0) {
             weightedStakeDate[msg.sender] = block.timestamp;
-            rewardsPaymentToken.safeTransfer(msg.sender, reward);
-            emit RewardPaid(msg.sender, address(rewardsPaymentToken), reward);
+            rewardsToken.safeTransfer(msg.sender, reward);
+            emit RewardPaid(msg.sender, reward);
         }
     }
-
-    function getRewardForUser(address user) public override nonReentrant whenNotPaused {
-        require(msg.sender == owner(), "StakingLPRewardFixedAPY :: isn`t allowed to call rewards");
-        uint256 reward = earned(user);
-        if (reward > 0) {
-            for (uint256 i = 0; i < stakeNonces[user]; i++) {
-                stakeNonceInfos[user][i].stakeTime = block.timestamp;
-            }
-            rewardsPaymentToken.safeTransfer(msg.sender, reward);
-            emit RewardPaid(user, address(rewardsPaymentToken), reward);
-        }
-    }
-
 
     function withdrawAndGetReward(uint256 nonce) external override {
         getReward();
@@ -253,7 +325,7 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, P
         }
         
         if (lPPairTokenB != rewardToken) {
-            path[0] = lPPairTokenB;
+            path[0] = lPPairTokenB;  
             tokenBToRewardPrice = swapRouter.getAmountsOut(10 ** 6, path)[1];
             if (_tokenBDecimalCompensate > 0)
                 tokenBToRewardPrice = tokenBToRewardPrice * (10 ** _tokenBDecimalCompensate);
@@ -261,47 +333,30 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, P
             tokenBToRewardPrice = 1e18;
         }
 
-        uint totalLpSupply = IERC20(stakingLPToken).totalSupply();
-        require(totalLpSupply > 0, "StakingLPRewardFixedAPY: No liquidity for pair");
+        uint totalLpSupply = IBEP20(stakingLPToken).totalSupply();
+        require(totalLpSupply > 0, "LockStakingLPRewardFixedAPY: No liquidity for pair");
         (uint reserveA, uint reaserveB,) = stakingLPToken.getReserves();
         uint price = 
-            uint(2) * Math.sqrt(reserveA * reaserveB)
-            * Math.sqrt(tokenAToRewardPrice * tokenBToRewardPrice) / totalLpSupply;
+            uint(2) * Math.sqrt(reserveA * reaserveB) * Math.sqrt(tokenAToRewardPrice * tokenBToRewardPrice) / totalLpSupply;
         
         return price;
     }
 
 
-    function updateRewardRate(uint256 _rewardRate) external onlyOwner {
-        rewardRate = _rewardRate;
-        emit RewardRateUpdated(rateChangesNonce, _rewardRate, block.timestamp);
-        APYcheckpoints[rateChangesNonce++] = APYCheckpoint(block.timestamp, _rewardRate);
+    function updateRewardAmount(uint256 reward) external onlyOwner {
+        rewardRate = reward;
+        emit RewardUpdated(reward);
     }
 
     function updateSwapRouter(address newSwapRouter) external onlyOwner {
-        require(newSwapRouter != address(0), "StakingLPRewardFixedAPY: Address is zero");
+        require(newSwapRouter != address(0), "LockStakingLPRewardFixedAPY: Address is zero");
         swapRouter = INimbusRouter(newSwapRouter);
     }
 
-    function updateRewardsToken(address newRewardsToken) external onlyOwner {
-        require(Address.isContract(newRewardsToken), "StakingLPRewardFixedAPY: Address is zero");
-        rewardsPaymentToken = IERC20(newRewardsToken);
-    }
-
-    function toggleUsePriceFeeds() external onlyOwner {
-        usePriceFeeds = !usePriceFeeds;
-        emit ToggleUsePriceFeeds(usePriceFeeds);
-    }
-
-    function updatePriceFeed(address newPriceFeed) external onlyOwner {
-        require(newPriceFeed != address(0), "StakingLPRewardFixedAPY: Address is zero");
-        priceFeed = IPriceFeed(newPriceFeed);
-    }
-
-    function rescue(address to, IERC20 token, uint256 amount) external onlyOwner {
-        require(to != address(0), "StakingLPRewardFixedAPY: Cannot rescue to the zero address");
-        require(amount > 0, "StakingLPRewardFixedAPY: Cannot rescue 0");
-        require(token != stakingLPToken, "StakingLPRewardFixedAPY: Cannot rescue staking token");
+    function rescue(address to, IBEP20 token, uint256 amount) external onlyOwner {
+        require(to != address(0), "LockStakingLPRewardFixedAPY: Cannot rescue to the zero address");
+        require(amount > 0, "LockStakingLPRewardFixedAPY: Cannot rescue 0");
+        require(token != stakingLPToken, "LockStakingLPRewardFixedAPY: Cannot rescue staking token");
         //owner can rescue rewardsToken if there is spare unused tokens on staking contract balance
 
         token.safeTransfer(to, amount);
@@ -309,8 +364,8 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, P
     }
 
     function rescue(address payable to, uint256 amount) external onlyOwner {
-        require(to != address(0), "StakingLPRewardFixedAPY: Cannot rescue to the zero address");
-        require(amount > 0, "StakingLPRewardFixedAPY: Cannot rescue 0");
+        require(to != address(0), "LockStakingLPRewardFixedAPY: Cannot rescue to the zero address");
+        require(amount > 0, "LockStakingLPRewardFixedAPY: Cannot rescue 0");
 
         to.transfer(amount);
         emit Rescue(to, amount);
