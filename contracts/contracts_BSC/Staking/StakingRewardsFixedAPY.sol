@@ -68,8 +68,8 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, address indexed paymentToken, uint256 reward);
     event RewardsPaymentTokenChanged(address indexed newRewardsPaymentToken);
-    event Rescue(address indexed to, uint256 amount);
-    event RescueToken(address indexed to, address indexed token, uint256 amount);
+    event RescueBNB(address indexed to, uint256 amount);
+    event RescueEIP20(address indexed to, address indexed token, uint256 amount);
     event UpdateUsePriceFeeds(bool indexed isUsePriceFeeds);
 
     constructor(
@@ -258,19 +258,20 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         emit UpdateUsePriceFeeds(isUsePriceFeeds);
     }
 
-    function rescue(address to, address token, uint256 amount) external onlyOwner whenPaused {
+    function rescueEIP20(address to, address token, uint256 amount) external onlyOwner whenPaused {
         require(to != address(0), "StakingRewardFixedAPY: Cannot rescue to the zero address");
         require(amount > 0, "StakingRewardFixedAPY: Cannot rescue 0");
         
         IERC20(token).safeTransfer(to, amount);
-        emit RescueToken(to, address(token), amount);
+        emit RescueEIP20(to, address(token), amount);
     }
 
-    function rescue(address payable to, uint256 amount) external onlyOwner whenPaused {
+    function rescueBNB(address payable to, uint256 amount) external onlyOwner whenPaused {
         require(to != address(0), "StakingRewardFixedAPY: Cannot rescue to the zero address");
         require(amount > 0, "StakingRewardFixedAPY: Cannot rescue 0");
 
-        to.transfer(amount);
-        emit Rescue(to, amount);
+        (bool sent, ) = to.call{value: amount}("");
+        require(sent, "StakingRewardFixedAPY: Rescue BNB failed");
+        emit RescueBNB(to, amount);
     }
 }
