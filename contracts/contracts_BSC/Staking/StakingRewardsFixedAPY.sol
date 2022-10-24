@@ -267,10 +267,10 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, address indexed paymentToken, uint256 reward);
+    event RewardsPaymentTokenChanged(address indexed newRewardsPaymentToken);
     event Rescue(address indexed to, uint amount);
     event RescueToken(address indexed to, address indexed token, uint amount);
-
-    event ToggleUsePriceFeeds(bool indexed usePriceFeeds);
+    event UpdateUsePriceFeeds(bool indexed isUsePriceFeeds);
 
     constructor(
         address _rewardsToken,
@@ -439,9 +439,11 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         swapRouter = INimbusRouter(newSwapRouter);
     }
 
-    function updateRewardsToken(address newRewardsToken) external onlyOwner {
-        require(Address.isContract(newRewardsToken), "StakingRewardFixedAPY: Address is zero");
-        rewardsPaymentToken = IBEP20(newRewardsToken);
+    function updateRewardsPaymentToken(address newRewardsPaymentToken) external onlyOwner {
+        require(Address.isContract(newRewardsPaymentToken), "StakingRewardFixedAPY: Address is zero");
+        rewardsPaymentToken = IBEP20(newRewardsPaymentToken);
+
+        emit RewardsPaymentTokenChanged(newRewardsPaymentToken);
     }
 
     function updatePriceFeed(address newPriceFeed) external onlyOwner {
@@ -449,9 +451,9 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         priceFeed = IPriceFeed(newPriceFeed);
     }
 
-    function toggleUsePriceFeeds() external onlyOwner {
-        usePriceFeeds = !usePriceFeeds;
-        emit ToggleUsePriceFeeds(usePriceFeeds);
+    function updateUsePriceFeeds(bool isUsePriceFeeds) external onlyOwner {
+        usePriceFeeds = isUsePriceFeeds;
+        emit UpdateUsePriceFeeds(isUsePriceFeeds);
     }
 
     function rescue(address to, address token, uint256 amount) external onlyOwner whenPaused {
