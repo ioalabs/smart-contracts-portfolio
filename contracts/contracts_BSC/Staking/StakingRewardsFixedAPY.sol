@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 interface INimbusRouter {
-    function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
+    function getAmountsOut(uint256 amountIn, address[] calldata path) external view returns (uint[] memory amounts);
 }
 
 interface IStakingRewards {
@@ -68,8 +68,8 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, address indexed paymentToken, uint256 reward);
     event RewardsPaymentTokenChanged(address indexed newRewardsPaymentToken);
-    event Rescue(address indexed to, uint amount);
-    event RescueToken(address indexed to, address indexed token, uint amount);
+    event Rescue(address indexed to, uint256 amount);
+    event RescueToken(address indexed to, address indexed token, uint256 amount);
     event UpdateUsePriceFeeds(bool indexed isUsePriceFeeds);
 
     constructor(
@@ -77,9 +77,12 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         address _rewardsPaymentToken,
         address _stakingToken,
         address _swapRouter,
-        uint _rewardRate
+        uint256 _rewardRate
     ) {
-        require(_rewardsToken != address(0) && _swapRouter != address(0), "StakingRewardFixedAPY: Zero address(es)");
+        require(
+            _rewardsToken != address(0) && _rewardsPaymentToken != address(0) && _swapRouter != address(0), 
+            "StakingRewardFixedAPY: Zero address(es)"
+        );
         rewardsToken = IERC20(_rewardsToken);
         rewardsPaymentToken = IERC20(_rewardsPaymentToken);
         stakingToken = IERC20(_stakingToken);
@@ -118,7 +121,7 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         }
     }
 
-    function stakeWithPermit(uint256 amount, uint deadline, uint8 v, bytes32 r, bytes32 s) external nonReentrant {
+    function stakeWithPermit(uint256 amount, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external nonReentrant {
         require(amount > 0, "StakingRewardFixedAPY: Cannot stake 0");
         // permit
         IERC20Permit(address(stakingToken)).permit(msg.sender, address(this), amount, deadline, v, r, s);
@@ -138,13 +141,13 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
 
     function _stake(uint256 amount, address user) private whenNotPaused {
         stakingToken.safeTransferFrom(msg.sender, address(this), amount);
-        uint amountRewardEquivalent = getEquivalentAmount(amount);
+        uint256 amountRewardEquivalent = getEquivalentAmount(amount);
 
         _totalSupply += amount;
         _totalSupplyRewardEquivalent += amountRewardEquivalent;
         _balances[user] += amount;
 
-        uint stakeNonce = stakeNonces[user]++;
+        uint256 stakeNonce = stakeNonces[user]++;
         stakeNonceInfos[user][stakeNonce].stakingTokenAmount = amount;
         stakeNonceInfos[user][stakeNonce].stakeTime = block.timestamp;
         stakeNonceInfos[user][stakeNonce].rewardRate = rewardRate;
@@ -158,8 +161,8 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
     //A user can withdraw its staking tokens even if there is no rewards tokens on the contract account
     function withdraw(uint256 nonce) public override nonReentrant whenNotPaused {
         require(stakeNonceInfos[msg.sender][nonce].stakingTokenAmount > 0, "StakingRewardFixedAPY: This stake nonce was withdrawn");
-        uint amount = stakeNonceInfos[msg.sender][nonce].stakingTokenAmount;
-        uint amountRewardEquivalent = stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount;
+        uint256 amount = stakeNonceInfos[msg.sender][nonce].stakingTokenAmount;
+        uint256 amountRewardEquivalent = stakeNonceInfos[msg.sender][nonce].rewardsTokenAmount;
         _totalSupply -= amount;
         _totalSupplyRewardEquivalent -= amountRewardEquivalent;
         _balances[msg.sender] -= amount;
@@ -199,7 +202,7 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         withdraw(nonce);
     }
 
-    function getTokenAmountForToken(address tokenSrc, address tokenDest, uint tokenAmount) public view returns (uint) { 
+    function getTokenAmountForToken(address tokenSrc, address tokenDest, uint256 tokenAmount) public view returns (uint) { 
         if (tokenSrc == tokenDest) return tokenAmount;
         if (usePriceFeeds && address(priceFeed) != address(0)) {
             (uint256 rate, uint256 precision) = priceFeed.queryRate(tokenSrc, tokenDest);
@@ -212,8 +215,8 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
     }
 
 
-    function getEquivalentAmount(uint amount) public view returns (uint) {
-        uint equivalent;
+    function getEquivalentAmount(uint256 amount) public view returns (uint) {
+        uint256 equivalent;
         if (stakingToken != rewardsToken) {
             equivalent = getTokenAmountForToken(address(stakingToken), address(rewardsToken), amount);
         } else {
