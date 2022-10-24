@@ -230,7 +230,8 @@ interface IBEP20Permit {
 contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pausable {
     using SafeBEP20 for IBEP20;
 
-    IBEP20 public rewardsToken;
+    IBEP20 public immutable rewardsToken;
+    IBEP20 public rewardsPaymentToken;
     IBEP20 public immutable stakingToken;
     INimbusRouter public swapRouter;
     uint256 public rewardRate; 
@@ -247,7 +248,6 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         uint256 stakingTokenAmount;
         uint256 rewardsTokenAmount;
         uint256 rewardRate;
-        address rewardsToken;
     }
 
     struct APYCheckpoint {
@@ -274,12 +274,14 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
 
     constructor(
         address _rewardsToken,
+        address _rewardsPaymentToken,
         address _stakingToken,
         address _swapRouter,
         uint _rewardRate
     ) {
         require(_rewardsToken != address(0) && _swapRouter != address(0), "StakingRewardFixedAPY: Zero address(es)");
         rewardsToken = IBEP20(_rewardsToken);
+        rewardsPaymentToken = IBEP20(_rewardsPaymentToken);
         stakingToken = IBEP20(_stakingToken);
         swapRouter = INimbusRouter(_swapRouter);
         rewardRate = _rewardRate;
@@ -304,9 +306,10 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
     }
 
     function earnedByNonce(address account, uint256 nonce) public view returns (uint256) {
-        return getTokenAmountForToken(stakeNonceInfos[account][nonce].rewardsToken, address(rewardsToken), stakeNonceInfos[account][nonce].rewardsTokenAmount) * 
+        uint256 amount = stakeNonceInfos[account][nonce].rewardsTokenAmount * 
             (block.timestamp - stakeNonceInfos[account][nonce].stakeTime) *
              stakeNonceInfos[account][nonce].rewardRate / (100 * rewardDuration);
+        return getTokenAmountForToken(address(rewardsToken), address(rewardsPaymentToken), amount);
     }
 
     function earned(address account) public view override returns (uint256 totalEarned) {
@@ -346,7 +349,6 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
         stakeNonceInfos[user][stakeNonce].stakeTime = block.timestamp;
         stakeNonceInfos[user][stakeNonce].rewardRate = rewardRate;
         stakeNonceInfos[user][stakeNonce].rewardsTokenAmount = amountRewardEquivalent;
-        stakeNonceInfos[user][stakeNonce].rewardsToken = address(rewardsToken);
         _balancesRewardEquivalent[user] += amountRewardEquivalent;
         emit Staked(user, amount);
     }
@@ -439,7 +441,7 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
 
     function updateRewardsToken(address newRewardsToken) external onlyOwner {
         require(Address.isContract(newRewardsToken), "StakingRewardFixedAPY: Address is zero");
-        rewardsToken = IBEP20(newRewardsToken);
+        rewardsPaymentToken = IBEP20(newRewardsToken);
     }
 
     function updatePriceFeed(address newPriceFeed) external onlyOwner {
