@@ -81,7 +81,8 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, P
     event RewardPaid(address indexed user, address indexed paymentToken, uint256 reward);
     event Rescue(address indexed to, uint256 amount);
     event RescueToken(address indexed to, address indexed token, uint256 amount);
-    event ToggleUsePriceFeeds(bool indexed usePriceFeeds);
+    event UpdateUsePriceFeeds(bool indexed usePriceFeeds);
+    event RewardsPaymentTokenChanged(address indexed newRewardsPaymentToken);
 
     constructor(
         address _rewardsToken,
@@ -283,14 +284,16 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, P
         swapRouter = INimbusRouter(newSwapRouter);
     }
 
-    function updateRewardsToken(address newRewardsToken) external onlyOwner {
-        require(Address.isContract(newRewardsToken), "StakingLPRewardFixedAPY: Address is zero");
-        rewardsPaymentToken = IERC20(newRewardsToken);
+    function updateRewardsPaymentToken(address newRewardsPaymentToken) external onlyOwner {
+        require(Address.isContract(newRewardsPaymentToken), "StakingLPRewardFixedAPY: Address is zero");
+        rewardsPaymentToken = IERC20(newRewardsPaymentToken);
+
+        emit RewardsPaymentTokenChanged(newRewardsPaymentToken);
     }
 
-    function toggleUsePriceFeeds() external onlyOwner {
-        usePriceFeeds = !usePriceFeeds;
-        emit ToggleUsePriceFeeds(usePriceFeeds);
+    function updateUsePriceFeeds(bool isUsePriceFeeds) external onlyOwner {
+        usePriceFeeds = isUsePriceFeeds;
+        emit UpdateUsePriceFeeds(isUsePriceFeeds);
     }
 
     function updatePriceFeed(address newPriceFeed) external onlyOwner {
@@ -301,8 +304,6 @@ contract StakingLPRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, P
     function rescue(address to, IERC20 token, uint256 amount) external onlyOwner {
         require(to != address(0), "StakingLPRewardFixedAPY: Cannot rescue to the zero address");
         require(amount > 0, "StakingLPRewardFixedAPY: Cannot rescue 0");
-        require(token != stakingLPToken, "StakingLPRewardFixedAPY: Cannot rescue staking token");
-        //owner can rescue rewardsToken if there is spare unused tokens on staking contract balance
 
         token.safeTransfer(to, amount);
         emit RescueToken(to, address(token), amount);
