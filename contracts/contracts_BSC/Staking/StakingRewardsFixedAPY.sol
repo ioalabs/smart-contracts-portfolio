@@ -266,7 +266,7 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
     event RewardRateUpdated(uint256 indexed rateChangesNonce, uint256 rewardRate, uint256 timestamp);
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
-    event RewardPaid(address indexed user, uint256 reward);
+    event RewardPaid(address indexed user, address indexed paymentToken, uint256 reward);
     event Rescue(address indexed to, uint amount);
     event RescueToken(address indexed to, address indexed token, uint amount);
 
@@ -377,8 +377,8 @@ contract StakingRewardFixedAPY is IStakingRewards, ReentrancyGuard, Ownable, Pau
             for (uint256 i = 0; i < stakeNonces[msg.sender]; i++) {
                 stakeNonceInfos[msg.sender][i].stakeTime = block.timestamp;
             }
-            rewardsToken.safeTransfer(msg.sender, reward);
-            emit RewardPaid(msg.sender, reward);
+            rewardsPaymentToken.safeTransfer(msg.sender, reward);
+            emit RewardPaid(msg.sender, address(rewardsPaymentToken), reward);
         }
     }
 
